@@ -42,6 +42,47 @@ class StorageService:
     def get_project_json_path(self, project_id: str) -> Path:
         return self.get_project_dir(project_id) / "project.json"
 
+    def get_plan_json_path(self, project_id: str) -> Path:
+        return self.get_project_dir(project_id) / "plan.json"
+
+    def save_plan_json(self, project_id: str, data: Dict[str, Any]) -> None:
+        """
+        Atomically saves walkthrough generation plan into plan.json.
+        """
+        json_path = self.get_plan_json_path(project_id)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                dir=str(json_path.parent),
+                delete=False,
+                encoding="utf-8",
+            ) as tf:
+                json.dump(data, tf, indent=2, ensure_ascii=False)
+                temp_name = tf.name
+
+            os.replace(temp_name, str(json_path))
+        except Exception as e:
+            logger.error(f"Failed to save plan.json for {project_id}: {e}")
+            raise StorageError(f"Failed to persist plan for project {project_id}")
+
+    def load_plan_json(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Loads walkthrough generation plan from plan.json. Returns None if not yet planned.
+        """
+        json_path = self.get_plan_json_path(project_id)
+        if not json_path.is_file():
+            return None
+
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to read plan.json for {project_id}: {e}")
+            raise StorageError(f"Corrupted plan data for project {project_id}")
+
+
     def create_project_storage(self, project_id: str) -> Tuple[Path, Path]:
         """
         Creates isolated project storage with uploads/ and processed/ subdirectories.

@@ -7,23 +7,31 @@ import { PropertyForm } from "@/components/PropertyForm";
 import { Dropzone } from "@/components/Dropzone";
 import { ImageGrid } from "@/components/ImageGrid";
 import { SceneResultsView } from "@/components/SceneResultsView";
+import { WalkthroughPlanView } from "@/components/WalkthroughPlanView";
 import { AlertBanner, AlertType } from "@/components/AlertBanner";
 import { ImagePreviewModal } from "@/components/ImagePreviewModal";
 import { NextPhaseModal } from "@/components/NextPhaseModal";
 import { ImageMetadata, StagedImage } from "@/types/image";
+import { GenerationPlan, PlanUpdateRequest } from "@/types/plan";
 import { Project } from "@/types/project";
 import { SceneType } from "@/types/scene";
 import { api, ApiError } from "@/lib/api";
 import { extractLocalImageDimensions, generateClientId } from "@/lib/utils";
-import { ArrowRight, Brain, Sparkles, Layers, ShieldCheck } from "lucide-react";
+import { ArrowRight, Brain, Sparkles, Layers, ShieldCheck, Route, Loader2 } from "lucide-react";
 
 export default function Home() {
   const [currentPhase, setCurrentPhase] = useState<number>(1);
   const [propertyName, setPropertyName] = useState<string>("Modern 3BHK Apartment");
   const [stagedImages, setStagedImages] = useState<StagedImage[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<GenerationPlan | null>(null);
+
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [isLoadingPlan, setIsLoadingPlan] = useState<boolean>(false);
+  const [isSavingPlan, setIsSavingPlan] = useState<boolean>(false);
+  const [isRebuildingPlan, setIsRebuildingPlan] = useState<boolean>(false);
+
   const [isBackendHealthy, setIsBackendHealthy] = useState<boolean | null>(null);
   const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(false);
   const [alert, setAlert] = useState<{
@@ -56,6 +64,32 @@ export default function Home() {
   useEffect(() => {
     checkHealth();
   }, [checkHealth]);
+
+  // Load or fetch Walkthrough Plan
+  const loadPlan = useCallback(async (projectId: string) => {
+    setIsLoadingPlan(true);
+    try {
+      const plan = await api.getPlan(projectId);
+      setCurrentPlan(plan);
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : "Failed to load walkthrough plan.";
+      setAlert({
+        type: "error",
+        title: "Plan Load Failed",
+        message,
+      });
+    } finally {
+      setIsLoadingPlan(false);
+    }
+  }, []);
+
+  // When switching to Phase 3, auto-load plan if project exists
+  useEffect(() => {
+    if (currentPhase === 3 && activeProject && !currentPlan) {
+      loadPlan(activeProject.id);
+    }
+  }, [currentPhase, activeProject, currentPlan, loadPlan]);
 
   // Handle Local File Selection from Dropzone
   const handleFilesSelected = async (newFiles: File[]) => {
@@ -291,7 +325,6 @@ export default function Home() {
       const updatedProject = await api.analyzeProject(activeProject.id, forceReanalyze);
       setActiveProject(updatedProject);
 
-      // Sync updated server metadata with staged image cards
       const imgMap = new Map(updatedProject.images.map((img) => [img.id, img]));
       setStagedImages((prev) =>
         prev.map((staged) => {
@@ -351,7 +384,6 @@ export default function Home() {
         scene_type: newSceneType,
       });
 
-      // Update in active project
       setActiveProject((prev) => {
         if (!prev) return prev;
         return {
@@ -360,7 +392,6 @@ export default function Home() {
         };
       });
 
-      // Update in staged images
       setStagedImages((prev) =>
         prev.map((staged) =>
           staged.serverData?.id === imageId
@@ -368,6 +399,9 @@ export default function Home() {
             : staged
         )
       );
+
+      // Invalidate existing cached plan so it re-computes with the new label
+      setCurrentPlan(null);
 
       setAlert({
         type: "info",
@@ -408,6 +442,8 @@ export default function Home() {
         );
       }
 
+      setCurrentPlan(null);
+
       setAlert({
         type: "success",
         title: "Image Re-analyzed",
@@ -423,6 +459,62 @@ export default function Home() {
       });
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  // Phase 3: Save User-Modified Walkthrough Plan
+  const handleSavePlan = async (updatePayload: PlanUpdateRequest) => {
+    if (!activeProject) return;
+
+    setIsSavingPlan(true);
+    setAlert(null);
+
+    try {
+      const updatedPlan = await api.updatePlan(activeProject.id, updatePayload);
+      setCurrentPlan(updatedPlan);
+      setAlert({
+        type: "success",
+        title: "Walkthrough Plan Saved",
+        message: `Plan version ${updatedPlan.plan_version} saved successfully with ${updatedPlan.scenes.length} planned shots (~${updatedPlan.total_estimated_duration_seconds.toFixed(1)}s runtime).`,
+      });
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : "Failed to save walkthrough plan.";
+      setAlert({
+        type: "error",
+        title: "Plan Save Error",
+        message,
+      });
+    } finally {
+      setIsSavingPlan(false);
+    }
+  };
+
+  // Phase 3: Regenerate AI Baseline Plan
+  const handleRebuildPlan = async () => {
+    if (!activeProject) return;
+
+    setIsRebuildingPlan(true);
+    setAlert(null);
+
+    try {
+      const rebuiltPlan = await api.rebuildPlan(activeProject.id);
+      setCurrentPlan(rebuiltPlan);
+      setAlert({
+        type: "info",
+        title: "Plan Regenerated",
+        message: `Re-calculated baseline walkthrough sequence from current visual scene understanding (Plan v${rebuiltPlan.plan_version}).`,
+      });
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : "Failed to regenerate walkthrough plan.";
+      setAlert({
+        type: "error",
+        title: "Rebuild Error",
+        message,
+      });
+    } finally {
+      setIsRebuildingPlan(false);
     }
   };
 
@@ -446,7 +538,12 @@ export default function Home() {
       {/* Academic Workflow Stepper */}
       <PhaseTracker
         currentPhase={currentPhase}
-        onSelectPhase={(phaseId) => setCurrentPhase(phaseId)}
+        onSelectPhase={(phaseId) => {
+          setCurrentPhase(phaseId);
+          if (phaseId === 3 && activeProject) {
+            loadPlan(activeProject.id);
+          }
+        }}
         hasImages={hasValidatedImages}
       />
 
@@ -538,7 +635,10 @@ export default function Home() {
                 onReanalyzeImage={handleReanalyzeSingle}
                 onInspectImage={setSelectedPreviewImage}
                 onBackToUpload={() => setCurrentPhase(1)}
-                onProceedToPhase3={() => setIsNextPhaseModalOpen(true)}
+                onProceedToPhase3={() => {
+                  setCurrentPhase(3);
+                  if (activeProject) loadPlan(activeProject.id);
+                }}
                 isAnalyzing={isAnalyzing}
               />
             ) : (
@@ -566,6 +666,56 @@ export default function Home() {
             )}
           </div>
         )}
+
+        {/* PHASE 3 VIEW: Walkthrough Sequence & Motion Planning */}
+        {currentPhase === 3 && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            {isLoadingPlan ? (
+              <div className="glass-card-elevated rounded-3xl p-12 text-center space-y-4 border border-slate-800">
+                <Loader2 className="w-8 h-8 animate-spin text-indigo-400 mx-auto" />
+                <p className="text-sm font-semibold text-slate-200">
+                  Synthesizing topological walkthrough sequence &amp; camera trajectory...
+                </p>
+              </div>
+            ) : activeProject && currentPlan && currentPlan.scenes.length > 0 ? (
+              <WalkthroughPlanView
+                project={activeProject}
+                plan={currentPlan}
+                onSavePlan={handleSavePlan}
+                onRebuildPlan={handleRebuildPlan}
+                onInspectImage={(imgId) => {
+                  const targetImg = activeProject.images.find((img) => img.id === imgId);
+                  if (targetImg) setSelectedPreviewImage(targetImg);
+                }}
+                onBackToScenes={() => setCurrentPhase(2)}
+                isSaving={isSavingPlan}
+                isRebuilding={isRebuildingPlan}
+              />
+            ) : (
+              <div className="glass-card-elevated rounded-3xl p-12 text-center space-y-4 border border-slate-800">
+                <div className="w-14 h-14 rounded-2xl bg-indigo-950/60 border border-indigo-500/30 text-indigo-400 flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(99,102,241,0.2)]">
+                  <Route className="w-7 h-7" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-slate-100">
+                    No Analyzed Photographs Ready for Planning
+                  </h3>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto mt-1.5 leading-relaxed">
+                    Please upload photos in Step 1 and run Scene Understanding in Step 2 to generate
+                    a walkthrough sequence plan.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPhase(2)}
+                  className="btn-primary px-5 py-2.5 text-xs font-semibold rounded-xl"
+                >
+                  Go to Scene Understanding (Phase 2)
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* Footer */}
@@ -573,7 +723,7 @@ export default function Home() {
         <p className="flex items-center justify-center gap-2 flex-wrap">
           <span>AI Property Walkthrough Prototype</span>
           <span>&bull;</span>
-          <span className="text-indigo-400">Phase 2: Visual Scene Understanding</span>
+          <span className="text-indigo-400">Phase 3: Walkthrough Sequence &amp; Camera Planning</span>
           <span>&bull;</span>
           <span>Academic Minor Project</span>
         </p>

@@ -46,8 +46,9 @@ export const PhaseTracker: React.FC<PhaseTrackerProps> = ({
           {PHASES.map((phase, idx) => {
             const isCurrent = phase.id === currentPhase;
             const isCompleted = phase.id < currentPhase;
-            const isLocked = phase.id > 2 || (!hasImages && phase.id > 1);
-            const isClickable = isCompleted && !isLocked && !!onSelectPhase;
+            const isLocked = phase.id > 3 || (!hasImages && phase.id > 1);
+            const isClickable = (isCompleted || (phase.id <= 3 && hasImages)) && !isLocked && !!onSelectPhase;
+
 
             return (
               <React.Fragment key={phase.id}>

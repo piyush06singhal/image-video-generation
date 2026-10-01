@@ -14,12 +14,16 @@ from app.core.errors import (
 )
 from app.schemas.common import ApiResponse
 from app.schemas.image import ImageBatchUploadResult, ImageMetadata
+from app.schemas.plan import GenerationPlan, PlanUpdateRequest
 from app.schemas.project import ProjectCreate, ProjectResponse
 from app.schemas.scene import ProjectAnalysisRequest, SceneCorrectionPayload
 from app.services.project_service import project_service
 from app.services.scene_service import scene_service
+from app.services.walkthrough_planner import walkthrough_planner
+
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
+
 
 
 @router.post("", response_model=ApiResponse[ProjectResponse], status_code=status.HTTP_201_CREATED)
@@ -222,4 +226,42 @@ async def get_analysis_image_file(project_id: str, image_id: str):
         media_type="image/jpeg",
         filename=file_path.name,
     )
+
+
+# ==========================================
+# Phase 3: Walkthrough Planning Endpoints
+# ==========================================
+
+@router.get("/{project_id}/plan", response_model=ApiResponse[GenerationPlan])
+async def get_project_plan(project_id: str):
+    """
+    Retrieve current walkthrough generation plan for a project.
+    Generates a baseline AI plan if none currently exists.
+    """
+    plan = walkthrough_planner.get_or_create_plan(project_id)
+    return ApiResponse.success_response(plan)
+
+
+@router.post("/{project_id}/plan/rebuild", response_model=ApiResponse[GenerationPlan])
+async def rebuild_project_plan(project_id: str):
+    """
+    Re-generates a new baseline walkthrough plan from the current scene analysis.
+    Preserves user-confirmed scene classifications while recalculating route and camera motions.
+    """
+    plan = walkthrough_planner.generate_baseline_plan(project_id, force_rebuild=True)
+    return ApiResponse.success_response(plan)
+
+
+@router.put("/{project_id}/plan", response_model=ApiResponse[GenerationPlan])
+async def update_project_plan(
+    project_id: str,
+    update_request: PlanUpdateRequest,
+):
+    """
+    Saves a user-modified walkthrough plan (reordering, exclusions, customized camera motions/prompts).
+    Increments plan version and sets source to 'user'.
+    """
+    plan = walkthrough_planner.update_user_plan(project_id, update_request)
+    return ApiResponse.success_response(plan)
+
 

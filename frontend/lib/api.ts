@@ -160,4 +160,29 @@ export const api = {
   getAnalysisImageUrl(projectId: string, imageId: string): string {
     return `${API_BASE_URL}/api/projects/${projectId}/images/${imageId}/analysis-file`;
   },
+
+  // Phase 3 Endpoints: Walkthrough Planning
+  async getPlan(projectId: string): Promise<import("@/types/plan").GenerationPlan> {
+    return request<import("@/types/plan").GenerationPlan>(`/api/projects/${projectId}/plan`);
+  },
+
+  async rebuildPlan(projectId: string): Promise<import("@/types/plan").GenerationPlan> {
+    return request<import("@/types/plan").GenerationPlan>(`/api/projects/${projectId}/plan/rebuild`, {
+      method: "POST",
+    });
+  },
+
+  async updatePlan(
+    projectId: string,
+    updatePayload: import("@/types/plan").PlanUpdateRequest
+  ): Promise<import("@/types/plan").GenerationPlan> {
+    return request<import("@/types/plan").GenerationPlan>(`/api/projects/${projectId}/plan`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(updatePayload),
+    });
+  },
 };
+

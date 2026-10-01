@@ -11,6 +11,7 @@ from app.main import app
 from app.services.storage_service import StorageService, storage_service
 from app.services.project_service import project_service
 from app.services.scene_service import scene_service
+from app.services.walkthrough_planner import walkthrough_planner
 
 
 @pytest.fixture(autouse=True)
@@ -24,16 +25,20 @@ def isolated_storage(tmp_path):
     # Override storage in services
     original_project_storage = project_service.storage
     original_scene_storage = scene_service.storage
+    original_planner_storage = walkthrough_planner.storage
     
     test_storage = StorageService(base_storage_dir=temp_storage)
     project_service.storage = test_storage
     scene_service.storage = test_storage
+    walkthrough_planner.storage = test_storage
     
     yield test_storage
     
     # Cleanup and restore
     project_service.storage = original_project_storage
     scene_service.storage = original_scene_storage
+    walkthrough_planner.storage = original_planner_storage
+
 
 
 @pytest.fixture
