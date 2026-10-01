@@ -1,0 +1,321 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import "tailwindcss";
+
+/* ============================================================
+   DESIGN SYSTEM — AI Property Walkthrough
+   Dark Glassmorphism Premium Theme
+   ============================================================ */
+
+:root {
+  /* Core palette */
+  --bg-deep:     #080c14;
+  --bg-base:     #0d1117;
+  --bg-surface:  #111827;
+  --bg-elevated: #1a2234;
+  --bg-card:     #1e293b;
+
+  /* Brand accent — electric violet-indigo */
+  --accent-1:    #6366f1;
+  --accent-2:    #818cf8;
+  --accent-glow: rgba(99, 102, 241, 0.35);
+
+  /* Secondary accent — emerald */
+  --emerald:     #10b981;
+  --emerald-dim: rgba(16, 185, 129, 0.15);
+
+  /* Amber */
+  --amber:       #f59e0b;
+  --amber-dim:   rgba(245, 158, 11, 0.12);
+
+  /* Rose */
+  --rose:        #f43f5e;
+  --rose-dim:    rgba(244, 63, 94, 0.12);
+
+  /* Text */
+  --text-primary:   #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted:     #475569;
+
+  /* Borders */
+  --border-subtle:  rgba(148, 163, 184, 0.08);
+  --border-light:   rgba(148, 163, 184, 0.14);
+  --border-medium:  rgba(148, 163, 184, 0.22);
+
+  /* Glass */
+  --glass-bg:        rgba(30, 41, 59, 0.75);
+  --glass-border:    rgba(148, 163, 184, 0.12);
+  --glass-bg-heavy:  rgba(13, 17, 23, 0.88);
+}
+
+/* ============================================================
+   BASE RESET
+   ============================================================ */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+  line-height: 1.6;
+}
+
+/* Subtle grid texture on body */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(99, 102, 241, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99, 102, 241, 0.015) 1px, transparent 1px);
+  background-size: 64px 64px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Ambient radial glow */
+body::after {
+  content: "";
+  position: fixed;
+  top: -30vh;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 80vw;
+  height: 60vh;
+  background: radial-gradient(ellipse, rgba(99, 102, 241, 0.07) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ============================================================
+   GLASS CARD UTILITY
+   ============================================================ */
+.glass-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.glass-card-elevated {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  backdrop-filter: blur(24px);
+}
+
+/* ============================================================
+   GRADIENT TEXT
+   ============================================================ */
+.gradient-text {
+  background: linear-gradient(135deg, #f1f5f9 0%, var(--accent-2) 50%, #a5b4fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ============================================================
+   GLOW EFFECTS
+   ============================================================ */
+.glow-accent {
+  box-shadow: 0 0 24px var(--accent-glow), 0 0 48px rgba(99, 102, 241, 0.1);
+}
+
+.glow-emerald {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+/* ============================================================
+   SCROLLBAR
+   ============================================================ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-base);
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--accent-glow); }
+  50%       { opacity: 0.7; box-shadow: 0 0 20px var(--accent-glow); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-4px); }
+}
+
+@keyframes slide-up-fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scan-line {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(99, 102, 241, 0.1) 50%, transparent 100%);
+  background-size: 200% auto;
+  animation: shimmer 2s linear infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-slide-up {
+  animation: slide-up-fade-in 0.3s ease-out both;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* ============================================================
+   FORM INPUTS
+   ============================================================ */
+input[type="text"],
+input[type="email"],
+select,
+textarea {
+  background: rgba(15, 23, 42, 0.6) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-medium) !important;
+}
+
+input[type="text"]:focus,
+select:focus {
+  border-color: var(--accent-1) !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
+  outline: none !important;
+}
+
+input::placeholder {
+  color: var(--text-muted) !important;
+}
+
+select option {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+/* ============================================================
+   PROGRESS BAR
+   ============================================================ */
+.progress-bar {
+  background: linear-gradient(90deg, var(--accent-1), var(--accent-2), #a5b4fc);
+  background-size: 200% auto;
+  animation: shimmer 2s linear infinite;
+}
+
+/* ============================================================
+   BADGE SYSTEM
+   ============================================================ */
+.badge-success {
+  background: var(--emerald-dim);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.2);
+}
+
+.badge-error {
+  background: var(--rose-dim);
+  color: #fb7185;
+  border: 1px solid rgba(251, 113, 133, 0.2);
+}
+
+.badge-warning {
+  background: var(--amber-dim);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.2);
+}
+
+.badge-accent {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--accent-2);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+/* ============================================================
+   INTERACTIVE BUTTON STATES
+   ============================================================ */
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent-1), #7c3aed);
+  color: #fff;
+  box-shadow: 0 4px 15px var(--accent-glow);
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px var(--accent-glow);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0px);
+}
+
+/* ============================================================
+   MONO FONT
+   ============================================================ */
+.font-mono {
+  font-family: "JetBrains Mono", "Fira Code", monospace !important;
+}
+
+/* ============================================================
+   IMAGE CARDS
+   ============================================================ */
+.image-card-hover {
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.image-card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(99, 102, 241, 0.2);
+}
+
+/* ============================================================
+   PHASE TRACKER GRADIENT LINE
+   ============================================================ */
+.phase-line {
+  background: linear-gradient(90deg, var(--accent-1), #7c3aed, rgba(99, 102, 241, 0.1));
+}
+
+/* ============================================================
+   MODAL BACKDROP
+   ============================================================ */
+.modal-backdrop {
+  background: rgba(2, 6, 23, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ============================================================
+   NO-SCROLLBAR UTILITY
+   ============================================================ */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

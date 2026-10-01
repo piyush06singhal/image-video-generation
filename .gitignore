@@ -1,0 +1,32 @@
+# Node & Frontend
+frontend/node_modules
+frontend/.next
+frontend/out
+frontend/.env.local
+frontend/.env.*.local
+
+# Python & Backend
+backend/venv
+backend/__pycache__
+backend/**/__pycache__
+backend/.pytest_cache
+backend/.env
+*.pyc
+*.pyo
+*.pyd
+
+# Storage & test data (preserve empty directories, exclude user uploaded media)
+backend/storage/projects/*
+!backend/storage/projects/.gitkeep
+backend/storage/uploads/*
+!backend/storage/uploads/.gitkeep
+backend/storage/processed/*
+!backend/storage/processed/.gitkeep
+backend/test_images/
+.env
+.env.local
+
+
+# OS
+.DS_Store
+Thumbs.db
