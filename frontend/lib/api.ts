@@ -242,6 +242,47 @@ export const api = {
   getClipUrl(projectId: string, sceneId: string): string {
     return `${API_BASE_URL}/api/projects/${projectId}/clips/${sceneId}/file`;
   },
+
+  // Phase 5 Endpoints: Video Assembly & Final Walkthrough
+  async assembleWalkthrough(
+    projectId: string,
+    payload?: import("@/types/assembly").AssemblyRequest
+  ): Promise<import("@/types/assembly").AssemblyJob> {
+    return request<import("@/types/assembly").AssemblyJob>(
+      `/api/projects/${projectId}/assemble`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: payload ? JSON.stringify(payload) : undefined,
+      }
+    );
+  },
+
+  async getAssemblyStatus(
+    projectId: string
+  ): Promise<import("@/types/assembly").AssemblyJob | null> {
+    return request<import("@/types/assembly").AssemblyJob | null>(
+      `/api/projects/${projectId}/assembly`
+    );
+  },
+
+  async getFinalVideoMetadata(
+    projectId: string
+  ): Promise<import("@/types/assembly").FinalVideoMetadata | null> {
+    return request<import("@/types/assembly").FinalVideoMetadata | null>(
+      `/api/projects/${projectId}/final-video`
+    );
+  },
+
+  getFinalVideoUrl(projectId: string): string {
+    return `${API_BASE_URL}/api/projects/${projectId}/final-video/file`;
+  },
+
+  getFinalVideoDownloadUrl(projectId: string): string {
+    return `${API_BASE_URL}/api/projects/${projectId}/final-video/download`;
+  },
 };
 
 

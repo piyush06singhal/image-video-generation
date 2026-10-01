@@ -18,18 +18,19 @@ export const Header: React.FC<HeaderProps> = ({
     <header
       className="sticky top-0 z-40 border-b"
       style={{
-        background: "rgba(8, 12, 20, 0.92)",
-        borderColor: "rgba(148, 163, 184, 0.1)",
+        background: "#0e131d",
+        borderColor: "rgba(255, 255, 255, 0.08)",
         backdropFilter: "blur(24px)",
         WebkitBackdropFilter: "blur(24px)",
+        boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
       }}
     >
       {/* Top accent line */}
       <div
-        className="h-px w-full"
+        className="h-[2px] w-full"
         style={{
           background:
-            "linear-gradient(90deg, transparent, #6366f1 30%, #818cf8 60%, transparent)",
+            "linear-gradient(90deg, transparent, #c28b2e 30%, #d9a443 60%, transparent)",
         }}
       />
 
@@ -38,49 +39,40 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-3.5">
           {/* Logo */}
           <div
-            className="relative w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+            className="relative w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-md shadow-amber-950/40"
             style={{
-              background: "linear-gradient(135deg, #6366f1, #7c3aed)",
-              boxShadow: "0 0 20px rgba(99, 102, 241, 0.4)",
+              background: "linear-gradient(135deg, #d9a443, #a66e1b)",
             }}
           >
-            <Building2 className="w-5 h-5 text-white" />
+            <Building2 className="w-5 h-5 text-slate-950 font-bold" />
             {/* Animated corner dot */}
             <span
               className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2"
               style={{
-                background: isBackendHealthy === true ? "#10b981" : isBackendHealthy === false ? "#f43f5e" : "#94a3b8",
-                borderColor: "rgba(8, 12, 20, 0.9)",
-                boxShadow: isBackendHealthy === true ? "0 0 6px rgba(16,185,129,0.8)" : "none",
+                background: isBackendHealthy === true ? "#16a34a" : isBackendHealthy === false ? "#dc2626" : "#94a3b8",
+                borderColor: "#0e131d",
+                boxShadow: isBackendHealthy === true ? "0 0 6px rgba(22,163,74,0.8)" : "none",
               }}
             />
           </div>
 
           <div>
             <div className="flex items-center gap-2.5">
-              <h1
-                className="text-base font-bold tracking-tight"
-                style={{
-                  background: "linear-gradient(135deg, #f1f5f9, #a5b4fc)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
-                }}
-              >
-                AI PROPERTY WALKTHROUGH
+              <h1 className="text-base font-bold tracking-tight font-display text-white">
+                Ciné<span className="text-amber-400">Estate</span>
               </h1>
               <span
                 className="text-[10px] font-semibold tracking-widest uppercase px-2 py-0.5 rounded-full"
                 style={{
-                  background: "rgba(99, 102, 241, 0.12)",
-                  color: "#818cf8",
-                  border: "1px solid rgba(99, 102, 241, 0.2)",
+                  background: "rgba(194, 139, 46, 0.15)",
+                  color: "#d9a443",
+                  border: "1px solid rgba(194, 139, 46, 0.3)",
                 }}
               >
-                v0.2
+                PRO
               </span>
             </div>
-            <p className="text-[11px] hidden sm:block" style={{ color: "#64748b" }}>
+            <p className="text-[11px] hidden sm:block text-slate-400">
               Transform property photographs into cinematic walkthroughs
             </p>
           </div>

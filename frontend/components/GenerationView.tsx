@@ -19,9 +19,10 @@ import {
 interface GenerationViewProps {
   projectId: string;
   onBackToPlan: () => void;
+  onProceedToPhase5?: () => void;
 }
 
-export function GenerationView({ projectId, onBackToPlan }: GenerationViewProps) {
+export function GenerationView({ projectId, onBackToPlan, onProceedToPhase5 }: GenerationViewProps) {
   const [overview, setOverview] = useState<ProjectGenerationOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -173,7 +174,7 @@ export function GenerationView({ projectId, onBackToPlan }: GenerationViewProps)
             <button
               onClick={handleGenerateAll}
               disabled={isGenerating}
-              className="btn-gold px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-lg glow-gold disabled:opacity-50"
+              className="btn-ghost px-5 py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 border border-[var(--border-2)] disabled:opacity-50"
             >
               {isGenerating ? (
                 <>
@@ -189,6 +190,16 @@ export function GenerationView({ projectId, onBackToPlan }: GenerationViewProps)
                 </>
               )}
             </button>
+
+            {overview && overview.completed_scenes > 0 && onProceedToPhase5 && (
+              <button
+                onClick={onProceedToPhase5}
+                className="btn-gold px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-lg glow-gold"
+              >
+                <Sparkles className="w-4 h-4" />
+                Assemble Final Walkthrough (Phase 5) →
+              </button>
+            )}
           </div>
         </div>
 

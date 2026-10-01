@@ -9,6 +9,7 @@ import { ImageCard } from "@/components/ImageCard";
 import { SceneResultsView } from "@/components/SceneResultsView";
 import { WalkthroughPlanView } from "@/components/WalkthroughPlanView";
 import { GenerationView } from "@/components/GenerationView";
+import { FinalWalkthroughView } from "@/components/FinalWalkthroughView";
 import { ImagePreviewModal } from "@/components/ImagePreviewModal";
 import { NextPhaseModal } from "@/components/NextPhaseModal";
 import { ImageMetadata, StagedImage } from "@/types/image";
@@ -369,7 +370,7 @@ export default function StudioPage() {
       />
 
       {/* Main Studio Container */}
-      <main className="max-w-7xl mx-auto px-6 py-10">
+      <main className="max-w-6xl mx-auto px-6 sm:px-8 py-10">
         {/* Alerts */}
         {alert && (
           <StudioAlert
@@ -382,25 +383,25 @@ export default function StudioPage() {
 
         {/* ── PHASE 1: UPLOAD & INGESTION ── */}
         {currentPhase === 1 && (
-          <div className="space-y-8 anim-fade-up">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Upload size={16} className="text-[var(--gold-1)]" />
+          <div className="space-y-10 anim-fade-up">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Upload size={15} className="text-[var(--gold-1)]" />
                 <p className="text-xs font-semibold tracking-[0.15em] uppercase text-[var(--gold-1)]">
-                  Phase 01
+                  Phase 01 · Ingestion
                 </p>
               </div>
               <h2 className="font-display text-3xl font-bold text-[var(--text-1)]">
-                Property Ingestion &amp; Image Validation
+                Property Ingestion &amp; Quality QA
               </h2>
-              <p className="text-sm text-[var(--text-2)] mt-1">
+              <p className="text-sm text-[var(--text-2)] leading-relaxed">
                 Drop your high-resolution property photographs. Each image is verified, quality-scored, and securely cataloged.
               </p>
             </div>
 
-            <div className="grid lg:grid-cols-3 gap-6 items-start">
-              {/* Left 2 Cols: Form + Dropzone */}
-              <div className="lg:col-span-2 space-y-6">
+            <div className="grid lg:grid-cols-12 gap-8 items-start">
+              {/* Left 8 Cols: Form + Dropzone + Staged Grid */}
+              <div className="lg:col-span-8 space-y-6">
                 <PropertyForm
                   propertyName={propertyName}
                   onPropertyNameChange={setPropertyName}
@@ -415,20 +416,20 @@ export default function StudioPage() {
 
                 {/* Staged files action bar */}
                 {stagedImages.length > 0 && (
-                  <div className="glass-gold rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 border border-[var(--border-2)]">
-                    <div className="flex items-center gap-2">
+                  <div className="glass-gold rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 border border-[var(--border-2)] shadow-lg">
+                    <div className="flex items-center gap-2.5">
                       <span className="w-2.5 h-2.5 rounded-full bg-[var(--gold-1)] animate-pulse" />
                       <span className="text-sm font-semibold text-[var(--text-1)]">
-                        {stagedImages.length} image{stagedImages.length !== 1 ? "s" : ""} ready to upload
+                        {stagedImages.length} image{stagedImages.length !== 1 ? "s" : ""} staged for ingestion
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <div className="flex items-center gap-2.5 w-full sm:w-auto">
                       <button
                         type="button"
                         onClick={handleClearStaged}
                         disabled={isUploading}
-                        className="px-3.5 py-2 text-xs font-semibold bg-red-950/40 text-red-300 border border-red-500/20 rounded-xl hover:bg-red-900/60 transition-all flex items-center gap-1.5"
+                        className="px-4 py-2 text-xs font-semibold bg-red-950/40 text-red-300 border border-red-500/20 rounded-xl hover:bg-red-900/60 transition-all flex items-center gap-1.5"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         Clear
@@ -438,7 +439,7 @@ export default function StudioPage() {
                         type="button"
                         onClick={handleUpload}
                         disabled={isUploading}
-                        className="btn-gold px-5 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-2 shadow-lg grow sm:grow-0 justify-center"
+                        className="btn-gold px-5 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-2 shadow-lg grow sm:grow-0 justify-center hover:scale-105"
                       >
                         {isUploading ? (
                           <>
@@ -472,58 +473,81 @@ export default function StudioPage() {
                 )}
               </div>
 
-              {/* Right Col: Info / Instructions */}
-              <div className="glass-gold rounded-2xl p-6 space-y-4 border border-[var(--border-1)]">
-                <p className="text-xs font-bold tracking-[0.15em] uppercase text-[var(--gold-1)]">
-                  Pipeline Intelligence
-                </p>
-                {[
-                  "Automated resolution & aspect ratio checks",
-                  "SHA-256 cryptographic duplicate detection",
-                  "Quality assessment (sharpness, lighting, blur)",
-                  "EXIF orientation & metadata normalization",
-                  "High-fidelity thumbnail generation",
-                ].map((item) => (
-                  <div key={item} className="flex items-start gap-2.5">
-                    <CheckCircle2 size={14} className="text-[var(--gold-1)] mt-0.5 shrink-0" />
-                    <span className="text-xs text-[var(--text-2)]">{item}</span>
-                  </div>
-                ))}
-
+              {/* Right 4 Cols: Project Status & QA Specs */}
+              <div className="lg:col-span-4 space-y-6">
                 {activeProject && (
-                  <div className="mt-6 pt-5 border-t border-[var(--border-1)] space-y-2">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-3)]">
-                      Current Active Project
+                  <div className="glass-gold rounded-3xl p-6 space-y-4 border border-[var(--border-2)] shadow-xl">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--gold-1)]">
+                      Active Project Session
                     </p>
-                    <p className="text-sm font-bold text-[var(--text-1)] truncate">
-                      {activeProject.name}
-                    </p>
-                    <div className="flex items-center justify-between text-xs text-[var(--text-2)] font-mono">
-                      <span>ID: #{activeProject.id.slice(-8)}</span>
-                      <span className="badge badge-gold">{activeProject.image_count} photos</span>
+                    <div className="space-y-1">
+                      <p className="text-base font-bold text-[var(--text-1)] truncate">
+                        {activeProject.name}
+                      </p>
+                      <p className="text-xs font-mono text-[var(--text-3)]">
+                        ID: #{activeProject.id.slice(-8)}
+                      </p>
                     </div>
+
+                    <div className="pt-3 border-t border-[var(--border-1)] flex items-center justify-between">
+                      <span className="text-xs text-[var(--text-2)]">Ingested Images</span>
+                      <span className="badge badge-gold">{activeProject.image_count} Photos</span>
+                    </div>
+
+                    <button
+                      onClick={() => setCurrentPhase(2)}
+                      className="btn-gold w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md mt-2"
+                    >
+                      <span>Go to Phase 2: Scene AI</span>
+                      <ArrowRight size={13} />
+                    </button>
                   </div>
                 )}
+
+                <div className="glass-gold rounded-3xl p-6 space-y-4 border border-[var(--border-1)] shadow-md">
+                  <p className="text-xs font-bold tracking-[0.15em] uppercase text-[var(--gold-1)]">
+                    Quality Gate Rules
+                  </p>
+                  <div className="space-y-3">
+                    {[
+                      "Automated resolution check (min 512×512)",
+                      "Cryptographic SHA-256 deduplication",
+                      "Sub-pixel Laplacian sharpness scoring",
+                      "EXIF orientation & metadata normalization",
+                      "High-fidelity thumbnail generation",
+                    ].map((item) => (
+                      <div key={item} className="flex items-start gap-2.5">
+                        <CheckCircle2 size={14} className="text-[var(--gold-1)] mt-0.5 shrink-0" />
+                        <span className="text-xs text-[var(--text-2)] leading-relaxed">{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
 
             {/* Uploaded Photos Gallery (if project exists) */}
             {uploadedImages.length > 0 && (
-              <div className="pt-8 border-t border-[var(--border-1)] space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-bold font-display text-[var(--text-1)]">
-                    Uploaded Gallery ({uploadedImages.length})
-                  </h3>
+              <div className="pt-10 border-t border-[var(--border-1)] space-y-6">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-xl font-bold font-display text-[var(--text-1)]">
+                      Cataloged Photos ({uploadedImages.length})
+                    </h3>
+                    <p className="text-xs text-[var(--text-3)] mt-0.5">
+                      Verified photographs ready for scene understanding.
+                    </p>
+                  </div>
                   <button
                     onClick={() => setCurrentPhase(2)}
-                    className="btn-gold px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg"
+                    className="btn-gold px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg"
                   >
-                    <span>Proceed to Scene Understanding</span>
+                    <span>Proceed to Scene Understanding (Phase 2)</span>
                     <ArrowRight size={14} />
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                   {uploadedImages.map((img) => (
                     <div
                       key={img.id}
@@ -538,7 +562,7 @@ export default function StudioPage() {
                           className="w-full h-full object-cover"
                         />
                         <div className="absolute top-2 left-2">
-                          <span className="badge badge-success text-[10px]">Uploaded</span>
+                          <span className="badge badge-success text-[10px]">Verified</span>
                         </div>
                       </div>
                       <div className="p-3 bg-[var(--bg-card)]">
@@ -546,7 +570,7 @@ export default function StudioPage() {
                           {img.original_filename}
                         </p>
                         <p className="text-[10px] text-[var(--text-3)] font-mono mt-0.5">
-                          {img.width} × {img.height}
+                          {img.width} × {img.height} px
                         </p>
                       </div>
                     </div>
@@ -617,16 +641,26 @@ export default function StudioPage() {
           <GenerationView
             projectId={activeProject.id}
             onBackToPlan={() => setCurrentPhase(3)}
+            onProceedToPhase5={() => setCurrentPhase(5)}
           />
         )}
 
-        {/* Phase 4 Fallback if no project */}
-        {currentPhase === 4 && !activeProject && (
+        {/* ── PHASE 5: VIDEO ASSEMBLY & FINAL WALKTHROUGH ── */}
+        {currentPhase === 5 && activeProject && (
+          <FinalWalkthroughView
+            projectId={activeProject.id}
+            propertyName={activeProject.name || propertyName}
+            onBackToClips={() => setCurrentPhase(4)}
+          />
+        )}
+
+        {/* Phase 4 & 5 Fallback if no project */}
+        {(currentPhase === 4 || currentPhase === 5) && !activeProject && (
           <div className="glass-gold rounded-3xl p-16 text-center max-w-lg mx-auto border border-[var(--border-2)] space-y-4">
             <Film size={36} className="text-[var(--gold-1)] mx-auto" />
             <h3 className="font-display text-xl font-bold text-[var(--text-1)]">No Active Walkthrough</h3>
             <p className="text-xs text-[var(--text-2)] leading-relaxed">
-              Complete walkthrough planning in Phase 3 before generating video clips.
+              Complete walkthrough planning and clip generation before viewing the final walkthrough.
             </p>
             <button
               onClick={() => setCurrentPhase(1)}

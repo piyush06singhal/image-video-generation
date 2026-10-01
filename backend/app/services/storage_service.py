@@ -48,12 +48,98 @@ class StorageService:
     def get_project_clips_dir(self, project_id: str) -> Path:
         return self.get_project_dir(project_id) / "clips"
 
+    def get_project_final_dir(self, project_id: str) -> Path:
+        return self.get_project_dir(project_id) / "final"
+
+    def get_final_video_path(self, project_id: str) -> Path:
+        return self.get_project_final_dir(project_id) / "walkthrough.mp4"
+
+    def get_final_metadata_path(self, project_id: str) -> Path:
+        return self.get_project_final_dir(project_id) / "metadata.json"
+
+    def get_assembly_json_path(self, project_id: str) -> Path:
+        return self.get_project_dir(project_id) / "assembly.json"
+
     def get_generation_json_path(self, project_id: str) -> Path:
         return self.get_project_dir(project_id) / "generation.json"
 
     def get_clip_path(self, project_id: str, scene_id: str) -> Path:
         clean_sid = scene_id.replace("scene_", "")
         return self.get_project_clips_dir(project_id) / f"clip_{clean_sid}.mp4"
+
+    def save_assembly_json(self, project_id: str, data: Dict[str, Any]) -> None:
+        """
+        Atomically saves assembly overview and job metadata into assembly.json.
+        """
+        json_path = self.get_assembly_json_path(project_id)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                dir=str(json_path.parent),
+                delete=False,
+                encoding="utf-8",
+            ) as tf:
+                json.dump(data, tf, indent=2, ensure_ascii=False)
+                temp_name = tf.name
+
+            os.replace(temp_name, str(json_path))
+        except Exception as e:
+            logger.error(f"Failed to save assembly.json for {project_id}: {e}")
+            raise StorageError(f"Failed to persist assembly metadata for project {project_id}")
+
+    def load_assembly_json(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Loads assembly job metadata from assembly.json. Returns None if not yet assembled.
+        """
+        json_path = self.get_assembly_json_path(project_id)
+        if not json_path.is_file():
+            return None
+
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to read assembly.json for {project_id}: {e}")
+            raise StorageError(f"Corrupted assembly data for project {project_id}")
+
+    def save_final_metadata_json(self, project_id: str, data: Dict[str, Any]) -> None:
+        """
+        Atomically saves final walkthrough video metadata into final/metadata.json.
+        """
+        json_path = self.get_final_metadata_path(project_id)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                dir=str(json_path.parent),
+                delete=False,
+                encoding="utf-8",
+            ) as tf:
+                json.dump(data, tf, indent=2, ensure_ascii=False)
+                temp_name = tf.name
+
+            os.replace(temp_name, str(json_path))
+        except Exception as e:
+            logger.error(f"Failed to save final metadata.json for {project_id}: {e}")
+            raise StorageError(f"Failed to persist final video metadata for project {project_id}")
+
+    def load_final_metadata_json(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Loads final walkthrough video metadata from final/metadata.json.
+        """
+        json_path = self.get_final_metadata_path(project_id)
+        if not json_path.is_file():
+            return None
+
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to read final metadata.json for {project_id}: {e}")
+            raise StorageError(f"Corrupted final video metadata for project {project_id}")
 
     def save_plan_json(self, project_id: str, data: Dict[str, Any]) -> None:
         """

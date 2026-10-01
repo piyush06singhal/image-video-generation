@@ -12,6 +12,11 @@ from app.core.errors import (
     InvalidImageFormatError,
     ProjectNotFoundError,
 )
+from app.schemas.assembly import (
+    AssemblyJob,
+    AssemblyRequest,
+    FinalVideoMetadata,
+)
 from app.schemas.common import ApiResponse
 from app.schemas.generation import (
     GenerateRequest,
@@ -25,6 +30,8 @@ from app.schemas.project import ProjectCreate, ProjectResponse
 from app.schemas.scene import ProjectAnalysisRequest, SceneCorrectionPayload
 from app.services.project_service import project_service
 from app.services.scene_service import scene_service
+from app.services.storage_service import storage_service
+from app.services.video_assembler import video_assembler_service
 from app.services.video_generation import video_generation_service
 from app.services.walkthrough_planner import walkthrough_planner
 
@@ -340,6 +347,95 @@ async def get_scene_clip_file(project_id: str, scene_id: str):
         media_type="video/mp4",
         filename=clip_path.name,
     )
+
+
+# ==========================================
+# Phase 5: Video Assembly & Final Walkthrough
+# ==========================================
+
+@router.post("/{project_id}/assemble", response_model=ApiResponse[AssemblyJob])
+async def assemble_project_walkthrough(
+    project_id: str,
+    request: Optional[AssemblyRequest] = None,
+):
+    """
+    Assembles individual scene video clips into a single property walkthrough MP4.
+    Validates clips, normalizes resolution/framerate, applies approved transitions,
+    and extracts final verified metadata.
+    """
+    job = video_assembler_service.assemble_walkthrough(project_id, request)
+    return ApiResponse.success_response(job)
+
+
+@router.get("/{project_id}/assembly", response_model=ApiResponse[Optional[AssemblyJob]])
+async def get_project_assembly_status(project_id: str):
+    """
+    Retrieves current assembly job status or latest completed assembly.
+    """
+    job = video_assembler_service.get_assembly_job(project_id)
+    return ApiResponse.success_response(job)
+
+
+@router.get("/{project_id}/assembly/{job_id}", response_model=ApiResponse[Optional[AssemblyJob]])
+async def get_assembly_job_by_id(project_id: str, job_id: str):
+    """
+    Retrieves execution state for a specific assembly job.
+    """
+    job = video_assembler_service.get_assembly_job(project_id, job_id)
+    return ApiResponse.success_response(job)
+
+
+@router.get("/{project_id}/final-video", response_model=ApiResponse[Optional[FinalVideoMetadata]])
+async def get_final_walkthrough_metadata(project_id: str):
+    """
+    Retrieves metadata for the assembled final walkthrough video.
+    Identifies whether the video is up-to-date or outdated relative to the plan.
+    """
+    metadata = video_assembler_service.get_final_metadata(project_id)
+    return ApiResponse.success_response(metadata)
+
+
+@router.get("/{project_id}/final-video/file")
+async def get_final_video_file(project_id: str):
+    """
+    Streams the final assembled walkthrough MP4 for in-browser playback.
+    """
+    video_path = project_service.storage.get_final_video_path(project_id)
+    if not video_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Final walkthrough video not found for project {project_id}.",
+        )
+    return FileResponse(
+        path=str(video_path),
+        media_type="video/mp4",
+        filename="walkthrough.mp4",
+    )
+
+
+@router.get("/{project_id}/final-video/download")
+async def download_final_video(project_id: str):
+    """
+    Direct file download attachment for the final property walkthrough video.
+    """
+    video_path = project_service.storage.get_final_video_path(project_id)
+    if not video_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Final walkthrough video not found for project {project_id}.",
+        )
+    proj = project_service.storage.load_project_json(project_id)
+    raw_name = (proj.get("name") if proj else "property") or "property"
+    clean_name = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in raw_name)
+    download_filename = f"{clean_name}_cinematic_walkthrough.mp4"
+
+    return FileResponse(
+        path=str(video_path),
+        media_type="video/mp4",
+        filename=download_filename,
+        headers={"Content-Disposition": f'attachment; filename="{download_filename}"'},
+    )
+
 
 
 

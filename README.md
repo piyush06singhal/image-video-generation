@@ -1,10 +1,12 @@
 # Image-to-Video Walkthrough Generation for Real Estate Properties
 
-**Academic Minor Project — Phases 1, 2 & 3: Foundation, Scene Understanding & Walkthrough Planner**
+**Academic Minor Project — Complete Pipeline: Phases 1 to 5 (Foundation, Scene Understanding, Route Planning, Clip Generation & Video Assembly)**
 
-This project transforms a set of real estate property photographs into a coherent, cinematographic walkthrough video. The system processes interior and exterior photographs through a modular multi-stage pipeline: robust ingestion, vision-language scene understanding, scene graph construction, topological walkthrough path ordering, camera motion estimation, and transition planning.
+This project transforms a set of real estate property photographs into a coherent, cinematographic walkthrough video. The system processes interior and exterior photographs through a modular 5-stage pipeline: robust ingestion, vision-language scene understanding, scene graph construction, topological walkthrough path ordering, camera motion estimation, image-to-video clip synthesis, and FFmpeg video assembly with restrained transitions.
 
 > **Academic Prototype Scope Note:** Full physically accurate 3D reconstruction (e.g. SLAM, dense NeRF, 3D Gaussian Splatting) is explicitly out of scope. The system constructs a topological scene graph and camera motion plans to direct generative video diffusion models while strictly preserving the authentic architectural geometry and furniture of the original photographs.
+>
+> **Spatial Honesty:** The final walkthrough is assembled from independently generated image-to-video clips. It does not constitute a physically reconstructed 3D tour, and does not hallucinate artificial intermediate hallway footage.
 
 ---
 
@@ -16,14 +18,15 @@ The application is structured as a decoupled frontend and backend:
 image-to-video-walkthrough/
 │
 ├── frontend/                     # Next.js 16 (React 19, TypeScript, Tailwind CSS)
-│   ├── app/                      # App router (layout, globals.css, main page)
+│   ├── app/                      # App router (layout, globals.css, main page, studio)
 │   ├── components/               # UI components
 │   │   ├── Dropzone.tsx          # Real estate photo upload area
 │   │   ├── ImageGrid.tsx         # Uploaded images grid with badges
-│   │   ├── SceneAnalysisModal.tsx# Scene understanding inspector & editor
+│   │   ├── SceneResultsView.tsx  # Phase 2: Scene understanding inspector & editor
 │   │   ├── WalkthroughPlanView.tsx # Phase 3: Interactive walkthrough timeline
-│   │   ├── PlannedSceneCard.tsx  # Phase 3: Scene card with camera & transition controls
-│   │   ├── PhaseTracker.tsx      # Multi-phase progression status bar
+│   │   ├── GenerationView.tsx    # Phase 4: Image-to-video clip generation studio
+│   │   ├── FinalWalkthroughView.tsx # Phase 5: Final video player & download
+│   │   ├── StudioPhaseTracker.tsx# 5-Phase studio tracker bar
 │   │   └── ...
 │   ├── lib/                      # API client, image helpers, utilities
 │   ├── types/                    # TypeScript data models and API schemas
@@ -31,23 +34,22 @@ image-to-video-walkthrough/
 │
 ├── backend/                      # Python FastAPI application
 │   ├── app/
-│   │   ├── api/v1/               # Health, Project, Scene Analysis, and Plan REST endpoints
+│   │   ├── api/v1/               # Health, Project, Scene, Plan, Video & Assembly REST endpoints
 │   │   ├── core/                 # Config, error definitions, structured logging
-│   │   ├── schemas/              # Pydantic models (Project, ImageMetadata, Scene, Plan)
+│   │   ├── schemas/              # Pydantic models (Project, Scene, Plan, Generation, Assembly)
 │   │   ├── services/             # Core business services
 │   │   │   ├── storage_service.py      # Filesystem persistence & path management
 │   │   │   ├── project_service.py      # Project lifecycle & image uploads
 │   │   │   ├── scene_analysis_service.py # Phase 2: Gemini multimodal visual analysis
-│   │   │   └── walkthrough_planner/    # Phase 3: Walkthrough Planning Subsystem
-│   │   │       ├── scene_graph_builder.py  # Scene graph nodes & connection edges
-│   │   │       ├── ordering_engine.py      # Real estate walkthrough ordering
-│   │   │       ├── camera_planner.py       # Camera motion & prompt generator
-│   │   │       ├── transition_planner.py   # Inter-scene transition planning
-│   │   │       └── planner_service.py      # GenerationPlan orchestration & versioning
+│   │   │   ├── walkthrough_planner/    # Phase 3: Walkthrough Planning Subsystem
+│   │   │   ├── video_generation/       # Phase 4: Image-to-Video Diffusion Engine
+│   │   │   └── video_assembler/        # Phase 5: Video Assembly & Transitions
+│   │   │       ├── ffmpeg_engine.py    # FFmpeg probe, normalization, concat, and intro cards
+│   │   │       └── service.py          # VideoAssemblerService orchestration & metadata
 │   │   └── main.py               # FastAPI entry point with CORS & exception handlers
 │   ├── storage/                  # Local filesystem storage
-│   │   └── projects/<id>/        # Isolated project folders with uploads/ & processed/
-│   ├── tests/                    # 36 automated unit, integration, and planner tests
+│   │   └── projects/<id>/        # Isolated project folders (uploads, analysis, plans, clips, final)
+│   ├── tests/                    # 46 automated unit, integration, and assembly tests
 │   └── requirements.txt
 │
 ├── docs/                         # Architectural diagrams and technical specifications
@@ -63,8 +65,9 @@ image-to-video-walkthrough/
 - **npm**: >= 9.0
 - **Python**: >= 3.10 (Tested on Python 3.14)
 - **FastAPI / Uvicorn**
+- **FFmpeg**: Bundled via `imageio-ffmpeg`
 - **Pillow**: >= 10.2.0
-- **Google GenAI SDK**: `google-genai` (Gemini 2.5 Flash for multimodal scene analysis)
+- **Google GenAI SDK**: `google-genai` (Gemini 2.5 Flash for scene analysis & Gemini Veo 2.0 for video generation)
 
 ---
 
@@ -80,7 +83,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 ### Backend (`backend/.env`)
 ```env
 PROJECT_NAME="Image-to-Video Walkthrough Generation"
-VERSION=0.3.0
+VERSION=0.5.0
 API_PREFIX=/api
 STORAGE_DIR=storage
 CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
@@ -124,7 +127,7 @@ GEMINI_MODEL=gemini-2.5-flash
 
 ## 5. Running Automated Backend Tests
 
-The backend includes 36 unit, integration, and algorithmic tests covering all Phase 1, Phase 2, and Phase 3 functionality:
+The backend includes 46 unit, integration, and algorithmic tests covering all Phases 1 through 5:
 
 ```bash
 cd backend
@@ -132,107 +135,32 @@ venv/bin/python -m pytest tests/ -v
 ```
 
 ### Test Coverage Highlights:
-- **Phase 1: Foundation & Ingestion (19 tests)**
-  - Health checks, project creation, non-empty validation, 404 handling.
-  - Image validation: format checks (JPEG/PNG/WEBP), dimension thresholds (≥ 512×512), corrupted image rejection.
-  - Size enforcement: 20 MB limit (HTTP 413).
-  - Exact duplicate detection via SHA-256 file hashing (`DUPLICATE_IMAGE`).
-  - Image deletion and physical disk cleanup from `uploads/` and `processed/`.
-  - Asset streaming for original files and derived thumbnails.
-- **Phase 2: Scene Understanding (7 tests)**
-  - Schema serialization and validation for scene categories, lighting, view types, and features.
-  - User correction persistence and manual override protection.
-  - Multimodal Gemini prompt formatting and structured output parsing.
-- **Phase 3: Walkthrough Planner & Camera Motion (10 tests)**
-  - `SceneGraphBuilder`: Graph node construction and candidate relationship edges.
-  - `OrderingEngine`: Real estate walkthrough sequence (Exterior → Entryway → Living Room → Dining → Kitchen → Bedrooms → Bathrooms → Balcony/Backyard).
-  - `CameraPromptGenerator`: Room-specific camera motion selection and negative constraint preservation prompts.
-  - `TransitionPlanner`: Visual match vs. straight cut transition determination based on scene connectivity.
-  - `WalkthroughPlannerService`: Plan generation, version incrementing, user reordering, and rejection of invalid/duplicate scene IDs.
-  - **Zero hallucinated rooms**: Strict invariant verified across all test scenarios.
+- **Phase 1: Foundation & Ingestion (14 tests)**: Health checks, project creation, validation, deduplication, thumbnail generation.
+- **Phase 2: Scene Understanding (7 tests)**: Multimodal scene classification, lighting analysis, feature extraction, manual override.
+- **Phase 3: Walkthrough Planner & Camera Motion (10 tests)**: Scene graph construction, architectural order sorting, negative safety prompts, plan lifecycle.
+- **Phase 4: Image-to-Video Generation (4 tests)**: Clip validator, generation state transitions, retry queue, clip streaming endpoints.
+- **Phase 5: Video Assembly & Transitions (6 tests)**: FFmpeg probe, normalization, title card generation, missing clip halt, end-to-end concat assembly, outdated plan detection, and video download endpoints.
 
 ---
 
-## 6. API Reference
+## 6. Phase 5: Video Assembly Subsystem
 
-All API responses follow a standardized JSON envelope:
+The **Video Assembler** transforms individual generated scene video clips into a single property walkthrough MP4:
 
-```json
-{
-  "success": true,
-  "data": { ... },
-  "error": null
-}
-```
-
-### Phase 1: Projects & Ingestion
-- `GET /api/health` — System status.
-- `POST /api/projects` — Create property project with name.
-- `GET /api/projects` — List all projects.
-- `GET /api/projects/{id}` — Get project metadata and image list.
-- `POST /api/projects/{id}/images` — Multi-image upload and validation.
-- `GET /api/projects/{id}/images` — Retrieve validated images list.
-- `DELETE /api/projects/{id}/images/{img_id}` — Delete image and clean disk.
-- `GET /api/projects/{id}/images/{img_id}/file` — Serve original pristine image.
-- `GET /api/projects/{id}/images/{img_id}/thumbnail` — Serve derived thumbnail.
-
-### Phase 2: Scene Understanding
-- `POST /api/projects/{id}/analyze` — Run real Gemini multimodal scene understanding.
-- `PATCH /api/projects/{id}/images/{img_id}/scene` — Save user-corrected scene label and features.
-- `GET /api/projects/{id}/images/{img_id}/analysis-file` — Serve normalized analysis image.
-
-### Phase 3: Walkthrough Planner & Camera Motion
-- `GET /api/projects/{id}/plan` — Retrieve current walkthrough plan (auto-generates baseline AI plan if none exists).
-- `POST /api/projects/{id}/plan/rebuild` — Force re-generation of AI baseline walkthrough plan from latest scene graph.
-- `PUT /api/projects/{id}/plan` — Save user-edited walkthrough plan (reordered shots, modified camera motions, custom prompts, scene exclusions). Increments `plan_version` and marks source as `user`.
+1. **Source of Truth Ordering**: Strictly adheres to `GenerationPlan.scenes[].order` without reordering or hallucinating rooms.
+2. **Pre-flight Clip Validation**: Probes each approved scene clip using FFprobe. Missing or corrupted clips halt assembly with descriptive diagnostics (e.g. *"Walkthrough cannot be assembled because the Kitchen clip is unavailable."*).
+3. **Normalization Engine**: Re-encodes clips to uniform resolution (720p/1080p), framerate (24fps), and H.264 video codec with letterbox padding to preserve authentic property geometry without distortion.
+4. **Cinematic Transitions**: Supports clean direct cuts (`straight_cut`) and restrained crossfades (`short_crossfade`, 0.25–0.5s). No flashy wipes, spin transitions, or artificial hallway morphing.
+5. **Title Intro Card**: Optional 1.5-second dark-luxury title card displaying property name and subtitle.
+6. **Outdated Video Tracking**: Computes SHA-256 fingerprint of the generation plan. If the plan is modified after assembly, the final video is marked as `is_outdated` with immediate re-assembly available.
+7. **Storage & Delivery**: Persists output to `projects/<project_id>/final/walkthrough.mp4` with verified `metadata.json` and direct streaming/download endpoints.
 
 ---
 
-## 7. Phase 4 Generation Contract
-
-The output of Phase 3 is a validated `GenerationPlan` object ready for image-to-video generation:
-
-```json
-{
-  "plan_id": "plan_project_123_v1",
-  "project_id": "project_123",
-  "plan_version": 1,
-  "source": "ai",
-  "total_estimated_duration_seconds": 16.0,
-  "scenes": [
-    {
-      "order": 1,
-      "scene_id": "scene_img_abc123",
-      "image_id": "img_abc123",
-      "scene_type": "living_room",
-      "label": "Living Room",
-      "reason": "Central living area positioned after entryway.",
-      "camera": {
-        "motion_type": "slow_forward",
-        "prompt": "Smooth slow forward camera push through the living room, maintaining steady eye-level perspective...",
-        "constraints": [
-          "do not alter room geometry",
-          "do not add furniture",
-          "do not remove visible furniture",
-          "avoid visual distortion"
-        ],
-        "duration_seconds": 4.0
-      },
-      "transition_to_next": {
-        "type": "straight_cut",
-        "duration_seconds": 0.5,
-        "reason": "Sequential progression between connected zones"
-      }
-    }
-  ]
-}
-```
-
----
-
-## 8. Current Implementation Status
+## 7. Current Implementation Status
 
 - [x] **Phase 1**: Ingestion, validation, deduplication, local storage, project management.
 - [x] **Phase 2**: Real multimodal scene understanding via Gemini API, manual correction, visual metadata extraction.
 - [x] **Phase 3**: Topological scene graph, deterministic walkthrough ordering, camera motion synthesis, transition planning, interactive glassmorphism UI, plan persistence and versioning.
-- [ ] **Phase 4**: Image-to-Video Diffusion Generation & Multi-Clip Video Assembly.
+- [x] **Phase 4**: Real Image-to-Video Diffusion Generation (Gemini Veo 2.0), retry queue, clip validation, video playback preview.
+- [x] **Phase 5**: Video Assembly, FFmpeg normalization, restrained transitions, intro title cards, HTML5 video player, MP4 download, outdated plan detection, and automated test suite.
