@@ -184,5 +184,64 @@ export const api = {
       body: JSON.stringify(updatePayload),
     });
   },
+
+  // Phase 4 Endpoints: Video Generation
+  async getGenerationOverview(
+    projectId: string
+  ): Promise<import("@/types/generation").ProjectGenerationOverview> {
+    return request<import("@/types/generation").ProjectGenerationOverview>(
+      `/api/projects/${projectId}/generation`
+    );
+  },
+
+  async generateClips(
+    projectId: string,
+    payload?: import("@/types/generation").GenerateClipsPayload
+  ): Promise<import("@/types/generation").ProjectGenerationOverview> {
+    return request<import("@/types/generation").ProjectGenerationOverview>(
+      `/api/projects/${projectId}/generate`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: payload ? JSON.stringify(payload) : undefined,
+      }
+    );
+  },
+
+  async retryJob(
+    projectId: string,
+    jobId: string
+  ): Promise<import("@/types/generation").GenerationJob> {
+    return request<import("@/types/generation").GenerationJob>(
+      `/api/projects/${projectId}/generation/jobs/${jobId}/retry`,
+      {
+        method: "POST",
+      }
+    );
+  },
+
+  async regenerateSceneClip(
+    projectId: string,
+    sceneId: string,
+    payload?: import("@/types/generation").RegenerateScenePayload
+  ): Promise<import("@/types/generation").GenerationJob> {
+    return request<import("@/types/generation").GenerationJob>(
+      `/api/projects/${projectId}/scenes/${sceneId}/regenerate`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: payload ? JSON.stringify(payload) : undefined,
+      }
+    );
+  },
+
+  getClipUrl(projectId: string, sceneId: string): string {
+    return `${API_BASE_URL}/api/projects/${projectId}/clips/${sceneId}/file`;
+  },
 };
+
 

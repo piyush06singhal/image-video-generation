@@ -13,12 +13,19 @@ from app.core.errors import (
     ProjectNotFoundError,
 )
 from app.schemas.common import ApiResponse
+from app.schemas.generation import (
+    GenerateRequest,
+    GenerationJob,
+    ProjectGenerationOverview,
+    RegenerateSceneRequest,
+)
 from app.schemas.image import ImageBatchUploadResult, ImageMetadata
 from app.schemas.plan import GenerationPlan, PlanUpdateRequest
 from app.schemas.project import ProjectCreate, ProjectResponse
 from app.schemas.scene import ProjectAnalysisRequest, SceneCorrectionPayload
 from app.services.project_service import project_service
 from app.services.scene_service import scene_service
+from app.services.video_generation import video_generation_service
 from app.services.walkthrough_planner import walkthrough_planner
 
 
@@ -263,5 +270,76 @@ async def update_project_plan(
     """
     plan = walkthrough_planner.update_user_plan(project_id, update_request)
     return ApiResponse.success_response(plan)
+
+
+# ==========================================
+# Phase 4: Video Generation Endpoints
+# ==========================================
+
+@router.post("/{project_id}/generate", response_model=ApiResponse[ProjectGenerationOverview])
+async def generate_project_clips(
+    project_id: str,
+    request: Optional[GenerateRequest] = None,
+):
+    """
+    Triggers asynchronous image-to-video clip generation for all eligible scenes in the plan.
+    Reuses previously generated clips unless force_regenerate is True.
+    """
+    overview = await video_generation_service.generate_clips(project_id, request)
+    return ApiResponse.success_response(overview)
+
+
+@router.get("/{project_id}/generation", response_model=ApiResponse[ProjectGenerationOverview])
+async def get_project_generation_overview(project_id: str):
+    """
+    Retrieves full video generation state and status breakdown for all scenes in the walkthrough plan.
+    """
+    overview = video_generation_service.get_or_create_overview(project_id)
+    return ApiResponse.success_response(overview)
+
+
+@router.get("/{project_id}/generation/jobs/{job_id}", response_model=ApiResponse[GenerationJob])
+async def get_generation_job(project_id: str, job_id: str):
+    """
+    Retrieves execution state and result metadata for a specific generation job.
+    """
+    job = video_generation_service.get_job_status(project_id, job_id)
+    return ApiResponse.success_response(job)
+
+
+@router.post("/{project_id}/generation/jobs/{job_id}/retry", response_model=ApiResponse[GenerationJob])
+async def retry_generation_job(project_id: str, job_id: str):
+    """
+    Retries a failed generation job without re-executing other scenes.
+    """
+    job = await video_generation_service.retry_job(project_id, job_id)
+    return ApiResponse.success_response(job)
+
+
+@router.post("/{project_id}/scenes/{scene_id}/regenerate", response_model=ApiResponse[GenerationJob])
+async def regenerate_scene_clip(
+    project_id: str,
+    scene_id: str,
+    request: Optional[RegenerateSceneRequest] = None,
+):
+    """
+    Forces regeneration of an individual scene clip, with optional camera motion or prompt overrides.
+    """
+    job = await video_generation_service.regenerate_scene(project_id, scene_id, request)
+    return ApiResponse.success_response(job)
+
+
+@router.get("/{project_id}/clips/{scene_id}/file")
+async def get_scene_clip_file(project_id: str, scene_id: str):
+    """
+    Streams the generated MP4 video clip for in-browser playback.
+    """
+    clip_path = video_generation_service.get_clip_file_path(project_id, scene_id)
+    return FileResponse(
+        path=str(clip_path),
+        media_type="video/mp4",
+        filename=clip_path.name,
+    )
+
 
 

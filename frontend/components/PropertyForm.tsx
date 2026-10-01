@@ -1,128 +1,101 @@
 "use client";
 
 import React from "react";
-import { Building, Sparkles, FolderCheck, Hash } from "lucide-react";
+import { Building, Sparkles, FolderCheck } from "lucide-react";
 import { Project } from "@/types/project";
 
 interface PropertyFormProps {
   propertyName: string;
-  onChangeName: (name: string) => void;
-  activeProject: Project | null;
+  onChangeName?: (name: string) => void;
+  onPropertyNameChange?: (name: string) => void;
+  activeProject?: Project | null;
+  project?: Project | null;
   disabled?: boolean;
 }
 
 const PROPERTY_SUGGESTIONS = [
-  "Modern 3BHK Apartment",
-  "Luxury Oceanfront Villa",
-  "Downtown Loft Apartment",
-  "Contemporary Suburban Home",
-  "Penthouse Suite",
+  "Modern 3BHK Luxury Apartment",
+  "Oceanfront Villa Estate",
+  "Downtown Sky Penthouse",
+  "Contemporary Suburban Retreat",
+  "Minimalist Architectural Home",
 ];
 
 export const PropertyForm: React.FC<PropertyFormProps> = ({
   propertyName,
   onChangeName,
+  onPropertyNameChange,
   activeProject,
+  project,
   disabled = false,
 }) => {
+  const currentProject = activeProject || project;
+  const handleChange = (val: string) => {
+    if (onChangeName) onChangeName(val);
+    if (onPropertyNameChange) onPropertyNameChange(val);
+  };
+
   return (
-    <div
-      className="rounded-2xl p-5 space-y-4"
-      style={{
-        background: "rgba(30, 41, 59, 0.5)",
-        border: "1px solid rgba(148, 163, 184, 0.1)",
-        backdropFilter: "blur(12px)",
-      }}
-    >
+    <div className="glass-gold rounded-2xl p-6 space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <label
             htmlFor="property-name"
-            className="block text-sm font-semibold"
-            style={{ color: "#e2e8f0" }}
+            className="block text-sm font-semibold text-[var(--text-1)]"
           >
-            Property Identification
+            Property Name &amp; Identification
           </label>
-          <p className="text-[11px] mt-0.5" style={{ color: "#475569" }}>
-            This name will label your project session and appear in exports.
+          <p className="text-xs text-[var(--text-3)] mt-0.5">
+            Labels your property walkthrough project and generated video metadata.
           </p>
         </div>
 
-        {activeProject && (
-          <div
-            className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-xl shrink-0"
-            style={{
-              background: "rgba(16, 185, 129, 0.08)",
-              border: "1px solid rgba(16, 185, 129, 0.18)",
-              color: "#34d399",
-            }}
-          >
+        {currentProject && (
+          <div className="badge badge-success flex items-center gap-1.5 px-3 py-1 text-xs shrink-0">
             <FolderCheck className="w-3.5 h-3.5 shrink-0" />
-            <span className="font-medium">Project active</span>
-            <span
-              className="font-mono text-[10px] px-1.5 py-0.5 rounded-md"
-              style={{
-                background: "rgba(16, 185, 129, 0.1)",
-                color: "#6ee7b7",
-              }}
-            >
-              {activeProject.id.slice(-8)}
+            <span>Active Session</span>
+            <span className="font-mono text-[10px] text-emerald-300 font-bold ml-1">
+              #{currentProject.id.slice(-6)}
             </span>
           </div>
         )}
       </div>
 
       {/* Input */}
-      <div className="relative">
-        <div
-          className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"
-          style={{ color: "#6366f1" }}
-        >
+      <div className="relative flex items-center">
+        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--gold-1)] pointer-events-none z-10 flex items-center justify-center w-5 h-5">
           <Building className="w-4 h-4" />
         </div>
         <input
           id="property-name"
           type="text"
           value={propertyName}
-          onChange={(e) => onChangeName(e.target.value)}
-          placeholder="e.g. Modern 3BHK Apartment, Luxury Penthouse..."
+          onChange={(e) => handleChange(e.target.value)}
+          placeholder="e.g. Luxury Architectural Villa, Oceanfront Penthouse..."
           disabled={disabled}
           maxLength={120}
-          className="w-full pl-11 pr-4 py-3 rounded-xl text-sm font-medium transition-all"
-          style={{
-            background: "rgba(15, 23, 42, 0.7)",
-            border: "1px solid rgba(148, 163, 184, 0.15)",
-            color: "#f1f5f9",
-          }}
+          className="w-full pl-12 pr-20 py-3.5 rounded-xl text-sm font-medium focus:ring-2 focus:ring-[var(--gold-1)] transition-all bg-[var(--bg-card)] border border-[var(--border-2)] text-[var(--text-1)] placeholder:text-[var(--text-3)]"
         />
         {propertyName && (
-          <div
-            className="absolute inset-y-0 right-0 pr-3.5 flex items-center"
-            style={{ color: "#475569" }}
-          >
-            <span className="text-[10px] font-mono">{propertyName.length}/120</span>
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center text-[var(--text-3)] pointer-events-none">
+            <span className="text-[11px] font-mono">{propertyName.length}/120</span>
           </div>
         )}
       </div>
 
-      {/* Suggestions */}
-      {!activeProject && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-medium" style={{ color: "#475569" }}>
-            <Sparkles className="w-3 h-3 inline mr-1" style={{ color: "#6366f1" }} />
-            Quick fill:
+      {/* Quick Suggestions */}
+      {!currentProject && (
+        <div className="flex items-center gap-2 flex-wrap pt-1">
+          <span className="text-xs text-[var(--text-3)] flex items-center gap-1.5 font-medium">
+            <Sparkles className="w-3.5 h-3.5 text-[var(--gold-2)]" />
+            Presets:
           </span>
           {PROPERTY_SUGGESTIONS.map((sug) => (
             <button
               key={sug}
               type="button"
-              onClick={() => onChangeName(sug)}
-              className="text-[11px] px-2.5 py-1 rounded-lg transition-all hover:scale-105"
-              style={{
-                background: "rgba(99, 102, 241, 0.08)",
-                border: "1px solid rgba(99, 102, 241, 0.15)",
-                color: "#818cf8",
-              }}
+              onClick={() => handleChange(sug)}
+              className="text-xs px-3 py-1 rounded-lg border border-[var(--border-1)] bg-[var(--gold-dim)] text-[var(--gold-2)] hover:border-[var(--border-2)] hover:bg-[var(--gold-glow)] transition-all font-medium"
             >
               {sug}
             </button>

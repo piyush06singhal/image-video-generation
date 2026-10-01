@@ -45,6 +45,16 @@ class StorageService:
     def get_plan_json_path(self, project_id: str) -> Path:
         return self.get_project_dir(project_id) / "plan.json"
 
+    def get_project_clips_dir(self, project_id: str) -> Path:
+        return self.get_project_dir(project_id) / "clips"
+
+    def get_generation_json_path(self, project_id: str) -> Path:
+        return self.get_project_dir(project_id) / "generation.json"
+
+    def get_clip_path(self, project_id: str, scene_id: str) -> Path:
+        clean_sid = scene_id.replace("scene_", "")
+        return self.get_project_clips_dir(project_id) / f"clip_{clean_sid}.mp4"
+
     def save_plan_json(self, project_id: str, data: Dict[str, Any]) -> None:
         """
         Atomically saves walkthrough generation plan into plan.json.
@@ -81,6 +91,54 @@ class StorageService:
         except Exception as e:
             logger.error(f"Failed to read plan.json for {project_id}: {e}")
             raise StorageError(f"Corrupted plan data for project {project_id}")
+
+    def save_generation_json(self, project_id: str, data: Dict[str, Any]) -> None:
+        """
+        Atomically saves video generation overview and job metadata into generation.json.
+        """
+        json_path = self.get_generation_json_path(project_id)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                dir=str(json_path.parent),
+                delete=False,
+                encoding="utf-8",
+            ) as tf:
+                json.dump(data, tf, indent=2, ensure_ascii=False)
+                temp_name = tf.name
+
+            os.replace(temp_name, str(json_path))
+        except Exception as e:
+            logger.error(f"Failed to save generation.json for {project_id}: {e}")
+            raise StorageError(f"Failed to persist generation metadata for project {project_id}")
+
+    def load_generation_json(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Loads video generation overview and job metadata from generation.json. Returns None if not started.
+        """
+        json_path = self.get_generation_json_path(project_id)
+        if not json_path.is_file():
+            return None
+
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to read generation.json for {project_id}: {e}")
+            raise StorageError(f"Corrupted generation data for project {project_id}")
+
+    def delete_clip_file(self, project_id: str, scene_id: str) -> None:
+        """
+        Removes stored generated video clip for a scene if it exists.
+        """
+        clip_path = self.get_clip_path(project_id, scene_id)
+        if clip_path.exists():
+            try:
+                clip_path.unlink()
+            except Exception as e:
+                logger.warning(f"Failed to delete clip file {clip_path}: {e}")
 
 
     def create_project_storage(self, project_id: str) -> Tuple[Path, Path]:

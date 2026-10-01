@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from enum import Enum
-from typing import List, Optional
-from pydantic import BaseModel, Field
+from typing import Any, List, Optional
+from pydantic import BaseModel, Field, field_validator
 from app.schemas.scene import ImageQualityResult, SceneAnalysisResult
 
 
@@ -27,7 +27,7 @@ class ImageMetadata(BaseModel):
     format: str = Field(..., description="Image format e.g. JPEG, PNG, WEBP")
     file_size: int = Field(..., ge=0, description="Image file size in bytes")
     aspect_ratio: float = Field(..., description="Image aspect ratio (width / height)")
-    sha256: str = Field(..., description="SHA-256 hash of the image content for duplicate detection")
+    sha256: Optional[str] = Field(None, description="SHA-256 hash of the image content for duplicate detection")
     status: ImageStatus = Field(default=ImageStatus.VALIDATED, description="Validation status")
     upload_timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(),
@@ -35,6 +35,18 @@ class ImageMetadata(BaseModel):
     )
     file_url: Optional[str] = Field(None, description="API URL to download or view original image")
     thumbnail_url: Optional[str] = Field(None, description="API URL to view derived thumbnail")
+
+    @field_validator("aspect_ratio", mode="before")
+    @classmethod
+    def coerce_aspect_ratio(cls, v: Any) -> float:
+        """Accept both float and legacy 'W:H' string format from stored data."""
+        if isinstance(v, str) and ":" in v:
+            parts = v.split(":")
+            try:
+                return float(parts[0]) / float(parts[1])
+            except (ValueError, ZeroDivisionError):
+                return 1.0
+        return float(v)
     
     # Phase 2: Analysis & Quality extensions
     analysis_status: AnalysisStatus = Field(

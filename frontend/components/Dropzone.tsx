@@ -55,33 +55,12 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFilesSelected, disabled = 
           fileInputRef.current?.click();
         }
       }}
-      className="relative rounded-2xl overflow-hidden transition-all select-none"
-      style={{
-        cursor: disabled ? "not-allowed" : "pointer",
-        border: isDragOver
-          ? "2px dashed rgba(99, 102, 241, 0.7)"
-          : "2px dashed rgba(148, 163, 184, 0.15)",
-        background: isDragOver
-          ? "rgba(99, 102, 241, 0.06)"
-          : "rgba(15, 23, 42, 0.4)",
-        opacity: disabled ? 0.5 : 1,
-        transform: isDragOver ? "scale(0.998)" : "scale(1)",
-        transition: "all 0.2s ease",
-      }}
+      className={`relative rounded-2xl overflow-hidden transition-all duration-300 select-none cursor-pointer border-2 border-dashed ${
+        isDragOver
+          ? "border-[var(--gold-2)] bg-[var(--gold-dim)] scale-[0.995] shadow-[0_0_30px_var(--gold-glow)]"
+          : "border-[var(--border-2)] bg-[var(--bg-card)] hover:border-[var(--border-3)] hover:bg-[var(--gold-subtle)]"
+      } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
     >
-      {/* Shimmer on drag */}
-      {isDragOver && (
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background:
-              "linear-gradient(135deg, transparent 0%, rgba(99,102,241,0.08) 50%, transparent 100%)",
-            animation: "shimmer 1.5s linear infinite",
-            backgroundSize: "200% auto",
-          }}
-        />
-      )}
-
       <input
         ref={fileInputRef}
         type="file"
@@ -93,71 +72,40 @@ export const Dropzone: React.FC<DropzoneProps> = ({ onFilesSelected, disabled = 
       />
 
       <div className="py-14 px-8 flex flex-col items-center justify-center max-w-lg mx-auto text-center">
-        {/* Icon */}
+        {/* Upload Icon */}
         <div
-          className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5 transition-all"
-          style={{
-            background: isDragOver
-              ? "linear-gradient(135deg, #6366f1, #7c3aed)"
-              : "rgba(99, 102, 241, 0.1)",
-            border: isDragOver
-              ? "1px solid rgba(99,102,241,0.5)"
-              : "1px solid rgba(99,102,241,0.15)",
-            boxShadow: isDragOver ? "0 0 30px rgba(99,102,241,0.35)" : "none",
-            transform: isDragOver ? "scale(1.08)" : "scale(1)",
-          }}
+          className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-5 transition-transform duration-300 ${
+            isDragOver
+              ? "bg-gradient-to-br from-[var(--gold-1)] to-[#8a5e20] text-[#080a0d] scale-110 shadow-lg shadow-[var(--gold-glow)]"
+              : "bg-[var(--gold-dim)] border border-[var(--border-1)] text-[var(--gold-2)]"
+          }`}
         >
-          <UploadCloud
-            className="w-8 h-8 transition-colors"
-            style={{ color: isDragOver ? "#fff" : "#818cf8" }}
-          />
+          <UploadCloud className="w-8 h-8" />
         </div>
 
-        <h3 className="text-base font-semibold mb-1.5" style={{ color: "#e2e8f0" }}>
-          {isDragOver ? "Release to add photos" : "Drop property photos here"}
+        <h3 className="text-lg font-semibold text-[var(--text-1)] mb-1.5 font-display">
+          {isDragOver ? "Drop photographs right here" : "Upload Property Photographs"}
         </h3>
 
-        <p className="text-sm mb-5" style={{ color: "#475569" }}>
-          or{" "}
-          <span
-            className="font-semibold underline underline-offset-2"
-            style={{ color: "#818cf8" }}
-          >
-            click to browse files
+        <p className="text-sm text-[var(--text-2)] mb-6">
+          Drag & drop your property photos here, or{" "}
+          <span className="font-semibold text-[var(--gold-2)] underline underline-offset-4 hover:text-[var(--gold-3)]">
+            browse from device
           </span>
         </p>
 
-        {/* Constraints row */}
-        <div
-          className="flex items-center gap-4 text-[11px] px-4 py-2 rounded-xl"
-          style={{
-            background: "rgba(15, 23, 42, 0.6)",
-            border: "1px solid rgba(148, 163, 184, 0.1)",
-            color: "#64748b",
-          }}
-        >
-          <div className="flex items-center gap-1.5">
-            <ImagePlus className="w-3.5 h-3.5" style={{ color: "#6366f1" }} />
-            <span>
-              <span style={{ color: "#94a3b8", fontWeight: 600 }}>JPG, PNG, WEBP</span>
-            </span>
+        {/* Requirements pills */}
+        <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-[var(--text-3)]">
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-[var(--border-1)] bg-[var(--bg-0)]">
+            <ImagePlus className="w-3.5 h-3.5 text-[var(--gold-2)]" />
+            <span className="text-[var(--text-2)] font-medium">JPG, PNG, WEBP</span>
           </div>
-          <div
-            className="w-px h-3.5"
-            style={{ background: "rgba(148, 163, 184, 0.15)" }}
-          />
-          <span>
-            Max{" "}
-            <span style={{ color: "#94a3b8", fontWeight: 600 }}>20 MB</span>
-          </span>
-          <div
-            className="w-px h-3.5"
-            style={{ background: "rgba(148, 163, 184, 0.15)" }}
-          />
-          <span>
-            Min{" "}
-            <span style={{ color: "#94a3b8", fontWeight: 600 }}>512×512</span>
-          </span>
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-[var(--border-1)] bg-[var(--bg-0)]">
+            <span className="text-[var(--text-2)] font-medium">Max 20MB per photo</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-[var(--border-1)] bg-[var(--bg-0)]">
+            <span className="text-[var(--text-2)] font-medium">Min 512×512 resolution</span>
+          </div>
         </div>
       </div>
     </div>

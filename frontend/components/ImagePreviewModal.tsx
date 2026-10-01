@@ -8,10 +8,6 @@ import {
   Sun,
   Camera,
   DoorOpen,
-  Tag,
-  UserCheck,
-  Layers,
-  Sparkles,
 } from "lucide-react";
 import { ImageMetadata, StagedImage } from "@/types/image";
 import {
@@ -32,7 +28,7 @@ export const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({
 }) => {
   if (!image) return null;
 
-  // Normalize image data from either StagedImage or ImageMetadata
+  // Normalize image data
   const isStaged = "name" in image;
   const staged = isStaged ? (image as StagedImage) : null;
   const meta = isStaged ? staged?.serverData : (image as ImageMetadata);
@@ -54,35 +50,34 @@ export const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4 sm:p-6 anim-fade-in"
       onClick={onClose}
     >
       <div
-        className="glass-card-elevated rounded-3xl max-w-5xl w-full max-h-[92vh] overflow-hidden shadow-2xl flex flex-col border border-slate-700/60"
-        style={{ background: "rgba(13, 17, 23, 0.95)" }}
+        className="glass-gold rounded-3xl max-w-5xl w-full max-h-[92vh] overflow-hidden shadow-2xl flex flex-col border border-[var(--border-2)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className="px-6 py-4.5 border-b border-slate-800 flex items-center justify-between">
+        <div className="px-6 py-4.5 border-b border-[var(--border-1)] flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
-              <h3 className="text-base font-semibold text-slate-100 truncate max-w-md sm:max-w-xl">
+              <h3 className="text-base font-bold font-display text-[var(--text-1)] truncate max-w-md sm:max-w-xl">
                 {name}
               </h3>
               {scene?.scene_type && (
-                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-500/30">
+                <span className="badge badge-gold">
                   {SCENE_TYPE_LABELS[scene.scene_type] || scene.scene_type}
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-[var(--text-3)] mt-0.5">
               Visual Scene Inspection &amp; Analytical Metadata
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/80 transition-colors border border-transparent hover:border-slate-700"
+            className="p-2 rounded-xl text-[var(--text-2)] hover:text-white hover:bg-[var(--gold-dim)] transition-colors border border-transparent hover:border-[var(--border-2)]"
           >
             <X className="w-5 h-5" />
           </button>
@@ -91,7 +86,7 @@ export const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Main Image View */}
-          <div className="lg:col-span-7 bg-slate-950 rounded-2xl overflow-hidden flex items-center justify-center min-h-[320px] max-h-[520px] border border-slate-800/80 shadow-inner">
+          <div className="lg:col-span-7 bg-[var(--bg-0)] rounded-2xl overflow-hidden flex items-center justify-center min-h-[320px] max-h-[520px] border border-[var(--border-1)] shadow-inner">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={previewUrl}
@@ -100,42 +95,72 @@ export const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({
             />
           </div>
 
-          {/* Metadata & Scene Sidebar */}
-          <div className="lg:col-span-5 space-y-4 text-xs">
-            {/* Scene Understanding Card */}
-            {scene && (
-              <div className="glass-card p-4.5 rounded-2xl border border-slate-800 space-y-3 bg-slate-900/60">
+          {/* Metadata Sidebar */}
+          <div className="lg:col-span-5 space-y-4">
+            {/* Quality Section */}
+            {quality && (
+              <div className="bg-[var(--bg-card)] p-4 rounded-2xl border border-[var(--border-1)] space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 font-semibold text-slate-200 uppercase tracking-wider text-[11px]">
-                    <Brain className="w-4 h-4 text-indigo-400" />
-                    <span>Visual Scene Metadata</span>
-                  </div>
-                  {scene.user_corrected ? (
-                    <span className="flex items-center gap-1 text-[10.5px] font-semibold text-indigo-300 bg-indigo-950/80 px-2.5 py-0.5 rounded-full border border-indigo-500/30">
-                      <UserCheck className="w-3 h-3" />
-                      Confirmed
-                    </span>
-                  ) : (
-                    <span className="text-[10.5px] font-mono text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
-                      {(scene.confidence * 100).toFixed(0)}% Confidence
-                    </span>
-                  )}
+                  <span className="text-xs font-bold text-[var(--gold-1)] flex items-center gap-1.5 uppercase tracking-wider">
+                    <ShieldCheck className="w-4 h-4 text-[var(--gold-2)]" />
+                    Quality Inspection
+                  </span>
+                  <span className="badge badge-success text-[10px]">
+                    {quality.status}
+                  </span>
                 </div>
 
-                <p className="text-slate-300 leading-relaxed bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 text-[11.5px]">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-[var(--bg-0)] p-2 rounded-xl border border-[var(--border-1)]">
+                    <span className="text-[10px] text-[var(--text-3)] block">Sharpness</span>
+                    <span className="font-mono text-emerald-400 font-medium">
+                      {(quality.sharpness_score * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <div className="bg-[var(--bg-0)] p-2 rounded-xl border border-[var(--border-1)]">
+                    <span className="text-[10px] text-[var(--text-3)] block">Brightness</span>
+                    <span className="font-mono text-[var(--gold-2)] font-medium">
+                      {(quality.brightness_score * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <div className="bg-[var(--bg-0)] p-2 rounded-xl border border-[var(--border-1)]">
+                    <span className="text-[10px] text-[var(--text-3)] block">Contrast</span>
+                    <span className="font-mono text-[var(--text-1)] font-medium">
+                      {(quality.contrast_score * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <div className="bg-[var(--bg-0)] p-2 rounded-xl border border-[var(--border-1)]">
+                    <span className="text-[10px] text-[var(--text-3)] block">Dimensions</span>
+                    <span className="font-mono text-[var(--text-1)] font-medium">
+                      {width} × {height}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Scene Understanding Section */}
+            {scene && (
+              <div className="bg-[var(--bg-card)] p-4 rounded-2xl border border-[var(--border-1)] space-y-2.5">
+                <span className="text-xs font-bold text-[var(--gold-1)] flex items-center gap-1.5 uppercase tracking-wider">
+                  <Brain className="w-4 h-4 text-[var(--gold-2)]" />
+                  Multimodal Scene Intelligence
+                </span>
+
+                <p className="text-xs text-[var(--text-2)] bg-[var(--bg-0)] p-3 rounded-xl border border-[var(--border-1)] leading-relaxed">
                   {scene.description}
                 </p>
 
                 {scene.features && scene.features.length > 0 && (
-                  <div>
-                    <span className="text-slate-400 block mb-1.5 font-medium">
-                      Identified Features:
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-[var(--text-3)] uppercase tracking-wider block">
+                      Recognized Features
                     </span>
-                    <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="flex flex-wrap gap-1.5">
                       {scene.features.map((f, i) => (
                         <span
                           key={i}
-                          className="bg-slate-800/80 border border-slate-700/60 text-slate-300 px-2.5 py-0.5 rounded-lg text-[11px]"
+                          className="badge badge-gold text-[10px]"
                         >
                           {f}
                         </span>
@@ -144,99 +169,57 @@ export const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <div className="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
-                    <span className="text-slate-500 block text-[10px]">Lighting:</span>
-                    <span className="font-medium text-slate-200 flex items-center gap-1.5 mt-0.5">
-                      <Sun className="w-3.5 h-3.5 text-amber-400" />
+                <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                  <div className="flex items-center gap-2 bg-[var(--bg-0)] p-2 rounded-xl border border-[var(--border-1)]">
+                    <Sun className="w-3.5 h-3.5 text-[var(--gold-2)] shrink-0" />
+                    <span className="truncate text-[var(--text-2)] text-xs">
                       {LIGHTING_LABELS[scene.lighting] || scene.lighting}
                     </span>
                   </div>
-                  <div className="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
-                    <span className="text-slate-500 block text-[10px]">Camera View:</span>
-                    <span className="font-medium text-slate-200 flex items-center gap-1.5 mt-0.5">
-                      <Camera className="w-3.5 h-3.5 text-indigo-400" />
+                  <div className="flex items-center gap-2 bg-[var(--bg-0)] p-2 rounded-xl border border-[var(--border-1)]">
+                    <Camera className="w-3.5 h-3.5 text-[var(--gold-1)] shrink-0" />
+                    <span className="truncate text-[var(--text-2)] text-xs">
                       {CAMERA_VIEW_LABELS[scene.camera_view] || scene.camera_view}
                     </span>
                   </div>
                 </div>
 
                 {scene.visible_connections && scene.visible_connections.length > 0 && (
-                  <div className="bg-emerald-950/40 p-3 rounded-xl border border-emerald-500/25 text-emerald-300 text-[11px] flex items-start gap-2">
-                    <DoorOpen className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                    <div>
-                      <strong className="text-emerald-200">Visible Passages:</strong>{" "}
-                      {scene.visible_connections.join(", ")}
-                    </div>
+                  <div className="flex items-center gap-2 text-xs text-emerald-300 bg-emerald-950/30 p-2.5 rounded-xl border border-emerald-500/20">
+                    <DoorOpen className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="truncate font-medium">
+                      Passages to: {scene.visible_connections.join(", ")}
+                    </span>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Quality Analysis Card */}
-            {quality && (
-              <div className="glass-card p-4.5 rounded-2xl border border-slate-800 space-y-2 bg-slate-900/60">
-                <div className="flex items-center justify-between font-semibold text-slate-200 text-[11px] uppercase tracking-wider">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-indigo-400" />
-                    <span>Quality Signals</span>
-                  </div>
-                  <span
-                    className={`capitalize font-bold text-xs ${
-                      quality.status === "good"
-                        ? "text-emerald-400"
-                        : quality.status === "acceptable"
-                        ? "text-amber-400"
-                        : "text-rose-400"
-                    }`}
-                  >
-                    {quality.status}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 text-center pt-1.5">
-                  <div className="bg-slate-950/60 p-2 rounded-xl border border-slate-800/80">
-                    <span className="text-[10px] text-slate-500 block">Sharpness</span>
-                    <span className="font-mono font-semibold text-emerald-400 text-xs">
-                      {(quality.sharpness_score * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <div className="bg-slate-950/60 p-2 rounded-xl border border-slate-800/80">
-                    <span className="text-[10px] text-slate-500 block">Brightness</span>
-                    <span className="font-mono font-semibold text-amber-300 text-xs">
-                      {(quality.brightness_score * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <div className="bg-slate-950/60 p-2 rounded-xl border border-slate-800/80">
-                    <span className="text-[10px] text-slate-500 block">Contrast</span>
-                    <span className="font-mono font-semibold text-indigo-300 text-xs">
-                      {(quality.contrast_score * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* Technical Metadata */}
-            <div className="glass-card p-4 rounded-2xl border border-slate-800 space-y-2 text-[11px] bg-slate-900/60">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Dimensions:</span>
-                <span className="font-medium text-slate-200 font-mono">
-                  {width} × {height} px ({formatAspectRatio(aspectRatio || 1)})
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">File Size:</span>
-                <span className="font-mono text-slate-200">{formatFileSize(size)}</span>
-              </div>
-              {sha256 && (
-                <div className="pt-1">
-                  <span className="text-slate-500 block mb-1">SHA-256 Checksum:</span>
-                  <span className="font-mono text-[9.5px] text-slate-400 bg-slate-950 p-2 rounded-xl border border-slate-800 block break-all">
-                    {sha256}
-                  </span>
+            <div className="bg-[var(--bg-card)] p-4 rounded-2xl border border-[var(--border-1)] text-xs space-y-2">
+              <span className="text-[10px] font-bold text-[var(--text-3)] uppercase tracking-wider block">
+                File Details
+              </span>
+              <div className="space-y-1 font-mono text-[11px] text-[var(--text-2)]">
+                <div className="flex justify-between">
+                  <span className="text-[var(--text-3)]">File Size:</span>
+                  <span>{formatFileSize(size)}</span>
                 </div>
-              )}
+                {aspectRatio && (
+                  <div className="flex justify-between">
+                    <span className="text-[var(--text-3)]">Aspect Ratio:</span>
+                    <span>{formatAspectRatio(aspectRatio)}</span>
+                  </div>
+                )}
+                {sha256 && (
+                  <div className="flex flex-col gap-0.5 pt-1 border-t border-[var(--border-1)]">
+                    <span className="text-[var(--text-3)]">SHA256 Fingerprint:</span>
+                    <span className="text-[9.5px] truncate text-[var(--text-3)]">
+                      {sha256}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

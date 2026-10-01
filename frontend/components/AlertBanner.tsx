@@ -12,42 +12,38 @@ interface AlertBannerProps {
   onDismiss?: () => void;
 }
 
-const ALERT_STYLES: Record<AlertType, { bg: string; border: string; iconColor: string; titleColor: string; msgColor: string }> = {
+const ALERT_CONFIG: Record<
+  AlertType,
+  { bg: string; border: string; iconColor: string; titleColor: string; icon: React.ReactNode }
+> = {
   info: {
-    bg: "rgba(99, 102, 241, 0.08)",
-    border: "rgba(99, 102, 241, 0.2)",
-    iconColor: "#818cf8",
-    titleColor: "#a5b4fc",
-    msgColor: "#94a3b8",
+    bg: "rgba(212, 168, 83, 0.08)",
+    border: "rgba(212, 168, 83, 0.25)",
+    iconColor: "var(--gold-2)",
+    titleColor: "var(--gold-3)",
+    icon: <Info className="w-4.5 h-4.5 shrink-0" />,
   },
   success: {
-    bg: "rgba(16, 185, 129, 0.08)",
-    border: "rgba(16, 185, 129, 0.2)",
-    iconColor: "#34d399",
-    titleColor: "#6ee7b7",
-    msgColor: "#94a3b8",
+    bg: "rgba(74, 222, 128, 0.08)",
+    border: "rgba(74, 222, 128, 0.25)",
+    iconColor: "#4ade80",
+    titleColor: "#86efac",
+    icon: <CheckCircle2 className="w-4.5 h-4.5 shrink-0" />,
   },
   warning: {
-    bg: "rgba(245, 158, 11, 0.08)",
-    border: "rgba(245, 158, 11, 0.2)",
+    bg: "rgba(251, 191, 36, 0.08)",
+    border: "rgba(251, 191, 36, 0.25)",
     iconColor: "#fbbf24",
-    titleColor: "#fcd34d",
-    msgColor: "#94a3b8",
+    titleColor: "#fde047",
+    icon: <AlertTriangle className="w-4.5 h-4.5 shrink-0" />,
   },
   error: {
-    bg: "rgba(244, 63, 94, 0.08)",
-    border: "rgba(244, 63, 94, 0.2)",
-    iconColor: "#fb7185",
-    titleColor: "#fda4af",
-    msgColor: "#94a3b8",
+    bg: "rgba(248, 113, 113, 0.08)",
+    border: "rgba(248, 113, 113, 0.25)",
+    iconColor: "#f87171",
+    titleColor: "#fca5a5",
+    icon: <AlertCircle className="w-4.5 h-4.5 shrink-0" />,
   },
-};
-
-const ICONS: Record<AlertType, React.ReactNode> = {
-  info: <Info className="w-4.5 h-4.5 shrink-0" />,
-  success: <CheckCircle2 className="w-4.5 h-4.5 shrink-0" />,
-  warning: <AlertTriangle className="w-4.5 h-4.5 shrink-0" />,
-  error: <AlertCircle className="w-4.5 h-4.5 shrink-0" />,
 };
 
 export const AlertBanner: React.FC<AlertBannerProps> = ({
@@ -56,27 +52,27 @@ export const AlertBanner: React.FC<AlertBannerProps> = ({
   message,
   onDismiss,
 }) => {
-  const s = ALERT_STYLES[type];
+  const cfg = ALERT_CONFIG[type];
 
   return (
     <div
-      className="animate-slide-up flex items-start gap-3 p-4 rounded-xl"
+      className="anim-fade-up flex items-start gap-3 p-4 rounded-xl backdrop-blur-md"
       style={{
-        background: s.bg,
-        border: `1px solid ${s.border}`,
+        background: cfg.bg,
+        border: `1px solid ${cfg.border}`,
       }}
     >
-      <span style={{ color: s.iconColor, marginTop: "1px" }}>
-        {ICONS[type]}
+      <span style={{ color: cfg.iconColor, marginTop: "1px" }}>
+        {cfg.icon}
       </span>
 
       <div className="grow min-w-0 text-sm">
         {title && (
-          <p className="font-semibold text-sm mb-0.5" style={{ color: s.titleColor }}>
+          <p className="font-semibold text-sm mb-0.5" style={{ color: cfg.titleColor }}>
             {title}
           </p>
         )}
-        <p className="leading-relaxed text-xs" style={{ color: s.msgColor }}>
+        <p className="leading-relaxed text-xs text-[var(--text-2)]">
           {message}
         </p>
       </div>
@@ -85,8 +81,7 @@ export const AlertBanner: React.FC<AlertBannerProps> = ({
         <button
           type="button"
           onClick={onDismiss}
-          className="p-1 rounded-lg transition-all hover:bg-white/5 shrink-0"
-          style={{ color: "#475569" }}
+          className="p-1 rounded-lg transition-all hover:bg-white/5 shrink-0 text-[var(--text-3)] hover:text-white"
         >
           <X className="w-4 h-4" />
         </button>

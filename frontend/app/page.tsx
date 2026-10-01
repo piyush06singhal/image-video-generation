@@ -1,746 +1,676 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { Header } from "@/components/Header";
-import { PhaseTracker } from "@/components/PhaseTracker";
-import { PropertyForm } from "@/components/PropertyForm";
-import { Dropzone } from "@/components/Dropzone";
-import { ImageGrid } from "@/components/ImageGrid";
-import { SceneResultsView } from "@/components/SceneResultsView";
-import { WalkthroughPlanView } from "@/components/WalkthroughPlanView";
-import { AlertBanner, AlertType } from "@/components/AlertBanner";
-import { ImagePreviewModal } from "@/components/ImagePreviewModal";
-import { NextPhaseModal } from "@/components/NextPhaseModal";
-import { ImageMetadata, StagedImage } from "@/types/image";
-import { GenerationPlan, PlanUpdateRequest } from "@/types/plan";
-import { Project } from "@/types/project";
-import { SceneType } from "@/types/scene";
-import { api, ApiError } from "@/lib/api";
-import { extractLocalImageDimensions, generateClientId } from "@/lib/utils";
-import { ArrowRight, Brain, Sparkles, Layers, ShieldCheck, Route, Loader2 } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import Link from "next/link";
+import {
+  ArrowRight,
+  Film,
+  Sparkles,
+  Play,
+  Building2,
+  Brain,
+  Route,
+  Video,
+  CheckCircle2,
+  Camera,
+  Zap,
+  Sparkle,
+  Compass,
+  Check,
+  X,
+} from "lucide-react";
 
-export default function Home() {
-  const [currentPhase, setCurrentPhase] = useState<number>(1);
-  const [propertyName, setPropertyName] = useState<string>("Modern 3BHK Apartment");
-  const [stagedImages, setStagedImages] = useState<StagedImage[]>([]);
-  const [activeProject, setActiveProject] = useState<Project | null>(null);
-  const [currentPlan, setCurrentPlan] = useState<GenerationPlan | null>(null);
+/* ── Interactive Pipeline Stage Definition ── */
+const PIPELINE_STAGES = [
+  {
+    id: 1,
+    phase: "Phase 01",
+    title: "Ingestion & Sub-Pixel QA",
+    tagline: "Quality assurance & metadata normalization",
+    icon: Building2,
+    description:
+      "Batch-upload property photographs. The system executes cryptographic SHA-256 deduplication, EXIF orientation correction, and computes sub-pixel sharpness, contrast, and illumination scores.",
+    metrics: [
+      { label: "Deduplication", value: "SHA-256 Bitwise" },
+      { label: "Min Resolution", value: "512 × 512 px" },
+      { label: "Quality Checks", value: "Sharpness & Lighting" },
+    ],
+    highlight: "Automated QA gates prevent degraded source inputs from entering video synthesis.",
+  },
+  {
+    id: 2,
+    phase: "Phase 02",
+    title: "Gemini Scene Intelligence",
+    tagline: "Multimodal room & spatial reasoning",
+    icon: Brain,
+    description:
+      "Google Gemini 2.5 Flash inspects each photo, accurately categorizing spaces (Living Room, Master Suite, Gourmet Kitchen), detecting natural/artificial lighting fixtures, and identifying architectural doorways.",
+    metrics: [
+      { label: "Vision Model", value: "Gemini 2.5 Flash" },
+      { label: "Room Taxonomy", value: "15+ Spatial Categories" },
+      { label: "Doorway Mapping", value: "Adjacency Discovery" },
+    ],
+    highlight: "Deep understanding of visual geometry and architectural continuity.",
+  },
+  {
+    id: 3,
+    phase: "Phase 03",
+    title: "Topological Route Planning",
+    tagline: "Graph-ordered natural traversal & camera dolly scripting",
+    icon: Route,
+    description:
+      "Constructs a connected scene graph to order rooms in human walkthrough sequence (Exterior ➔ Entrance ➔ Living ➔ Kitchen ➔ Suites). Scripts restrained, cinematic camera motions tailored to room acoustics and size.",
+    metrics: [
+      { label: "Graph Engine", value: "Topological Ordering" },
+      { label: "Motions", value: "Push-In, Pan, Orbit, Pedestal" },
+      { label: "Safety Bounds", value: "Bathroom/Tight Space Restraints" },
+    ],
+    highlight: "Eliminates jarring jump cuts and unnatural camera velocities.",
+  },
+  {
+    id: 4,
+    phase: "Phase 04",
+    title: "Google Veo Video Diffusion",
+    tagline: "Diffusion-driven image-to-video synthesis",
+    icon: Video,
+    description:
+      "Google Veo synthesizes stabilized, high-definition video clips from the source photographs using the planned camera motions. Artifact checks ensure consistent frame rates and structural integrity.",
+    metrics: [
+      { label: "Synthesis Engine", value: "Google Veo 2.0" },
+      { label: "Output Spec", value: "1080p HD @ 24fps" },
+      { label: "Post-QA", value: "Bitrate & Artifact Filtering" },
+    ],
+    highlight: "Produces photorealistic video tours ready for luxury listing presentations.",
+  },
+];
 
-  const [isUploading, setIsUploading] = useState<boolean>(false);
-  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
-  const [isLoadingPlan, setIsLoadingPlan] = useState<boolean>(false);
-  const [isSavingPlan, setIsSavingPlan] = useState<boolean>(false);
-  const [isRebuildingPlan, setIsRebuildingPlan] = useState<boolean>(false);
+export default function LandingPage() {
+  const [scrolled, setScrolled] = useState(false);
+  const [activeStage, setActiveStage] = useState(1);
+  const [isPlayingDemo, setIsPlayingDemo] = useState(false);
+  const [activeRoomIndex, setActiveRoomIndex] = useState(0);
 
-  const [isBackendHealthy, setIsBackendHealthy] = useState<boolean | null>(null);
-  const [isCheckingHealth, setIsCheckingHealth] = useState<boolean>(false);
-  const [alert, setAlert] = useState<{
-    type: AlertType;
-    title?: string;
-    message: string;
-  } | null>(null);
-  const [selectedPreviewImage, setSelectedPreviewImage] = useState<
-    ImageMetadata | StagedImage | null
-  >(null);
-  const [isNextPhaseModalOpen, setIsNextPhaseModalOpen] = useState<boolean>(false);
-
-  // Check Backend Health on Mount
-  const checkHealth = useCallback(async () => {
-    setIsCheckingHealth(true);
-    try {
-      const res = await api.checkHealth();
-      if (res && res.status === "healthy") {
-        setIsBackendHealthy(true);
-      } else {
-        setIsBackendHealthy(false);
-      }
-    } catch {
-      setIsBackendHealthy(false);
-    } finally {
-      setIsCheckingHealth(false);
-    }
-  }, []);
+  const rooms = [
+    { name: "Modern Exterior", type: "Exterior", motion: "Slow Forward Dolly", icon: "🏡" },
+    { name: "Grand Foyer", type: "Entrance", motion: "Smooth Push-In", icon: "🚪" },
+    { name: "Open Living Salon", type: "Living Room", motion: "Gentle Left-to-Right Pan", icon: "🛋️" },
+    { name: "Chef's Kitchen", type: "Kitchen", motion: "Low Orbit Around Island", icon: "🍳" },
+    { name: "Primary Master Suite", type: "Bedroom", motion: "Pedestal Up Reveal", icon: "🛏️" },
+  ];
 
   useEffect(() => {
-    checkHealth();
-  }, [checkHealth]);
-
-  // Load or fetch Walkthrough Plan
-  const loadPlan = useCallback(async (projectId: string) => {
-    setIsLoadingPlan(true);
-    try {
-      const plan = await api.getPlan(projectId);
-      setCurrentPlan(plan);
-    } catch (err) {
-      const message =
-        err instanceof ApiError ? err.message : "Failed to load walkthrough plan.";
-      setAlert({
-        type: "error",
-        title: "Plan Load Failed",
-        message,
-      });
-    } finally {
-      setIsLoadingPlan(false);
-    }
+    const handler = () => setScrolled(window.scrollY > 40);
+    window.addEventListener("scroll", handler);
+    return () => window.removeEventListener("scroll", handler);
   }, []);
 
-  // When switching to Phase 3, auto-load plan if project exists
+  // Demo playback loop
   useEffect(() => {
-    if (currentPhase === 3 && activeProject && !currentPlan) {
-      loadPlan(activeProject.id);
-    }
-  }, [currentPhase, activeProject, currentPlan, loadPlan]);
+    if (!isPlayingDemo) return;
+    const interval = setInterval(() => {
+      setActiveRoomIndex((prev) => (prev + 1) % rooms.length);
+    }, 2800);
+    return () => clearInterval(interval);
+  }, [isPlayingDemo, rooms.length]);
 
-  // Handle Local File Selection from Dropzone
-  const handleFilesSelected = async (newFiles: File[]) => {
-    if (newFiles.length === 0) return;
-
-    const allowedMimeTypes = ["image/jpeg", "image/png", "image/webp", "image/jpg"];
-    const maxSizeBytes = 20 * 1024 * 1024; // 20 MB
-
-    const processedNewImages: StagedImage[] = [];
-    const invalidFiles: string[] = [];
-
-    for (const file of newFiles) {
-      const fileType = file.type.toLowerCase();
-      const hasValidExt = /\.(jpg|jpeg|png|webp)$/i.test(file.name);
-
-      if (!allowedMimeTypes.includes(fileType) && !hasValidExt) {
-        invalidFiles.push(`${file.name} (unsupported format)`);
-        continue;
-      }
-
-      if (file.size > maxSizeBytes) {
-        invalidFiles.push(`${file.name} (exceeds 20 MB)`);
-        continue;
-      }
-
-      const isAlreadyStaged = stagedImages.some(
-        (img) => img.name === file.name && img.size === file.size
-      );
-      if (isAlreadyStaged) {
-        invalidFiles.push(`${file.name} (already in list)`);
-        continue;
-      }
-
-      const previewUrl = URL.createObjectURL(file);
-      let dimensions: { width?: number; height?: number; aspectRatio?: number } = {};
-
-      try {
-        dimensions = await extractLocalImageDimensions(file);
-      } catch {
-        // Fallback
-      }
-
-      processedNewImages.push({
-        id: generateClientId(),
-        file,
-        previewUrl,
-        name: file.name,
-        size: file.size,
-        width: dimensions.width,
-        height: dimensions.height,
-        aspectRatio: dimensions.aspectRatio,
-        status: "staged",
-      });
-    }
-
-    if (invalidFiles.length > 0) {
-      setAlert({
-        type: "warning",
-        title: "Some files were skipped",
-        message: invalidFiles.join(", "),
-      });
-    }
-
-    if (processedNewImages.length > 0) {
-      setStagedImages((prev) => [...prev, ...processedNewImages]);
-    }
-  };
-
-  // Remove single image
-  const handleRemoveImage = async (id: string) => {
-    const target = stagedImages.find((img) => img.id === id);
-    if (!target) return;
-
-    if (target.serverData && activeProject) {
-      try {
-        await api.deleteImage(activeProject.id, target.serverData.id);
-        const updatedProject = await api.getProject(activeProject.id);
-        setActiveProject(updatedProject);
-      } catch (err) {
-        const message =
-          err instanceof ApiError ? err.message : "Failed to delete image from backend.";
-        setAlert({
-          type: "error",
-          title: "Delete Failed",
-          message,
-        });
-        return;
-      }
-    }
-
-    if (target.previewUrl.startsWith("blob:")) {
-      URL.revokeObjectURL(target.previewUrl);
-    }
-
-    setStagedImages((prev) => prev.filter((img) => img.id !== id));
-  };
-
-  // Clear all staged/uploaded images
-  const handleClearAll = async () => {
-    stagedImages.forEach((img) => {
-      if (img.previewUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(img.previewUrl);
-      }
-    });
-
-    setStagedImages([]);
-    setAlert(null);
-  };
-
-  // Upload & Validate Flow
-  const handleUploadAndValidate = async () => {
-    if (!propertyName.trim()) {
-      setAlert({
-        type: "error",
-        title: "Property Name Required",
-        message: "Please enter a valid property name before uploading images.",
-      });
-      return;
-    }
-
-    const unuploadedImages = stagedImages.filter((img) => img.status === "staged");
-    if (unuploadedImages.length === 0) {
-      setAlert({
-        type: "info",
-        message: "All selected images are already uploaded and validated.",
-      });
-      return;
-    }
-
-    setIsUploading(true);
-    setAlert(null);
-
-    setStagedImages((prev) =>
-      prev.map((img) =>
-        img.status === "staged" ? { ...img, status: "uploading" } : img
-      )
-    );
-
-    try {
-      let currentProject = activeProject;
-      if (!currentProject) {
-        currentProject = await api.createProject(propertyName.trim());
-        setActiveProject(currentProject);
-      }
-
-      const filesToUpload = unuploadedImages.map((img) => img.file!).filter(Boolean);
-      const batchResult = await api.uploadImages(currentProject.id, filesToUpload);
-
-      const uploadedMap = new Map(
-        batchResult.uploaded.map((m) => [m.original_filename, m])
-      );
-      const rejectedMap = new Map(
-        batchResult.rejected.map((r) => [r.filename, r])
-      );
-
-      setStagedImages((prev) =>
-        prev.map((img) => {
-          if (img.status !== "uploading") return img;
-
-          const matchServer = uploadedMap.get(img.name);
-          if (matchServer) {
-            return {
-              ...img,
-              status: "validated",
-              width: matchServer.width,
-              height: matchServer.height,
-              aspectRatio: matchServer.aspect_ratio,
-              serverData: matchServer,
-            };
-          }
-
-          const matchReject = rejectedMap.get(img.name);
-          if (matchReject) {
-            return {
-              ...img,
-              status: "error",
-              errorMessage: matchReject.message,
-            };
-          }
-
-          return img;
-        })
-      );
-
-      const refreshedProject = await api.getProject(currentProject.id);
-      setActiveProject(refreshedProject);
-
-      if (batchResult.total_rejected > 0) {
-        setAlert({
-          type: "warning",
-          title: "Partial Upload Warning",
-          message: `${batchResult.total_accepted} images validated. ${batchResult.total_rejected} image(s) rejected.`,
-        });
-      } else {
-        setAlert({
-          type: "success",
-          title: "Validation Complete",
-          message: `Successfully validated ${batchResult.total_accepted} property photographs. Ready for Scene Understanding.`,
-        });
-      }
-    } catch (err) {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : "An unexpected error occurred during image upload.";
-
-      setAlert({
-        type: "error",
-        title: "Upload Error",
-        message,
-      });
-
-      setStagedImages((prev) =>
-        prev.map((img) =>
-          img.status === "uploading"
-            ? { ...img, status: "error", errorMessage: message }
-            : img
-        )
-      );
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  // Phase 2: Run Multimodal Scene Analysis
-  const handleAnalyzeAll = async (forceReanalyze: boolean = false) => {
-    if (!activeProject) return;
-
-    setIsAnalyzing(true);
-    setAlert(null);
-
-    try {
-      const updatedProject = await api.analyzeProject(activeProject.id, forceReanalyze);
-      setActiveProject(updatedProject);
-
-      const imgMap = new Map(updatedProject.images.map((img) => [img.id, img]));
-      setStagedImages((prev) =>
-        prev.map((staged) => {
-          if (staged.serverData && imgMap.has(staged.serverData.id)) {
-            const updatedMeta = imgMap.get(staged.serverData.id)!;
-            return {
-              ...staged,
-              serverData: updatedMeta,
-            };
-          }
-          return staged;
-        })
-      );
-
-      const completedCount = updatedProject.images.filter(
-        (img) => img.analysis_status === "completed"
-      ).length;
-      const failedCount = updatedProject.images.filter(
-        (img) => img.analysis_status === "failed"
-      ).length;
-
-      if (failedCount > 0) {
-        setAlert({
-          type: "warning",
-          title: "Analysis Partially Completed",
-          message: `${completedCount} images analyzed successfully; ${failedCount} images failed analysis.`,
-        });
-      } else {
-        setAlert({
-          type: "success",
-          title: "Scene Understanding Complete",
-          message: `All ${completedCount} property photographs have been analyzed and classified with structured scene metadata.`,
-        });
-      }
-    } catch (err) {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : "An unexpected error occurred during scene understanding.";
-
-      setAlert({
-        type: "error",
-        title: "Scene Analysis Error",
-        message,
-      });
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
-  // Phase 2: Manual User Scene Correction
-  const handleUpdateScene = async (imageId: string, newSceneType: SceneType) => {
-    if (!activeProject) return;
-
-    try {
-      const updatedImage = await api.updateImageScene(activeProject.id, imageId, {
-        scene_type: newSceneType,
-      });
-
-      setActiveProject((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          images: prev.images.map((img) => (img.id === imageId ? updatedImage : img)),
-        };
-      });
-
-      setStagedImages((prev) =>
-        prev.map((staged) =>
-          staged.serverData?.id === imageId
-            ? { ...staged, serverData: updatedImage }
-            : staged
-        )
-      );
-
-      // Invalidate existing cached plan so it re-computes with the new label
-      setCurrentPlan(null);
-
-      setAlert({
-        type: "info",
-        message: `Scene classification for ${updatedImage.original_filename} updated to "${newSceneType.replace("_", " ")}" and saved.`,
-      });
-    } catch (err) {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : "Failed to update scene classification.";
-      setAlert({
-        type: "error",
-        title: "Update Failed",
-        message,
-      });
-    }
-  };
-
-  // Phase 2: Re-analyze Single Image
-  const handleReanalyzeSingle = async (imageId: string) => {
-    if (!activeProject) return;
-
-    setIsAnalyzing(true);
-    setAlert(null);
-
-    try {
-      const updatedProject = await api.analyzeProject(activeProject.id, true, [imageId]);
-      setActiveProject(updatedProject);
-
-      const targetMeta = updatedProject.images.find((img) => img.id === imageId);
-      if (targetMeta) {
-        setStagedImages((prev) =>
-          prev.map((staged) =>
-            staged.serverData?.id === imageId
-              ? { ...staged, serverData: targetMeta }
-              : staged
-          )
-        );
-      }
-
-      setCurrentPlan(null);
-
-      setAlert({
-        type: "success",
-        title: "Image Re-analyzed",
-        message: `Successfully re-analyzed ${targetMeta?.original_filename || "image"}.`,
-      });
-    } catch (err) {
-      const message =
-        err instanceof ApiError ? err.message : "Failed to re-analyze image.";
-      setAlert({
-        type: "error",
-        title: "Re-analysis Error",
-        message,
-      });
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
-  // Phase 3: Save User-Modified Walkthrough Plan
-  const handleSavePlan = async (updatePayload: PlanUpdateRequest) => {
-    if (!activeProject) return;
-
-    setIsSavingPlan(true);
-    setAlert(null);
-
-    try {
-      const updatedPlan = await api.updatePlan(activeProject.id, updatePayload);
-      setCurrentPlan(updatedPlan);
-      setAlert({
-        type: "success",
-        title: "Walkthrough Plan Saved",
-        message: `Plan version ${updatedPlan.plan_version} saved successfully with ${updatedPlan.scenes.length} planned shots (~${updatedPlan.total_estimated_duration_seconds.toFixed(1)}s runtime).`,
-      });
-    } catch (err) {
-      const message =
-        err instanceof ApiError ? err.message : "Failed to save walkthrough plan.";
-      setAlert({
-        type: "error",
-        title: "Plan Save Error",
-        message,
-      });
-    } finally {
-      setIsSavingPlan(false);
-    }
-  };
-
-  // Phase 3: Regenerate AI Baseline Plan
-  const handleRebuildPlan = async () => {
-    if (!activeProject) return;
-
-    setIsRebuildingPlan(true);
-    setAlert(null);
-
-    try {
-      const rebuiltPlan = await api.rebuildPlan(activeProject.id);
-      setCurrentPlan(rebuiltPlan);
-      setAlert({
-        type: "info",
-        title: "Plan Regenerated",
-        message: `Re-calculated baseline walkthrough sequence from current visual scene understanding (Plan v${rebuiltPlan.plan_version}).`,
-      });
-    } catch (err) {
-      const message =
-        err instanceof ApiError ? err.message : "Failed to regenerate walkthrough plan.";
-      setAlert({
-        type: "error",
-        title: "Rebuild Error",
-        message,
-      });
-    } finally {
-      setIsRebuildingPlan(false);
-    }
-  };
-
-  const hasUnsavedChanges = stagedImages.some((img) => img.status === "staged");
-  const hasValidatedImages =
-    (activeProject && activeProject.images.length > 0) ||
-    stagedImages.some((img) => img.status === "validated");
+  const currentStageData = PIPELINE_STAGES.find((s) => s.id === activeStage) || PIPELINE_STAGES[0];
 
   return (
-    <div
-      className="min-h-screen flex flex-col font-sans relative"
-      style={{ background: "var(--bg-deep)", color: "var(--text-primary)" }}
-    >
-      {/* Top Header */}
-      <Header
-        isBackendHealthy={isBackendHealthy}
-        onRetryHealth={checkHealth}
-        isCheckingHealth={isCheckingHealth}
-      />
+    <div className="relative min-h-screen bg-[var(--bg-0)] text-[var(--text-1)] selection:bg-[var(--gold-1)] selection:text-[#080a0d]">
+      {/* ── STICKY TOP NAVBAR ── */}
+      <nav
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+          scrolled
+            ? "bg-[#080a0d]/90 border-b border-[var(--border-1)] backdrop-blur-xl py-3.5 shadow-2xl"
+            : "bg-transparent py-6"
+        }`}
+      >
+        <div className="max-w-7xl mx-auto px-6 sm:px-8 flex items-center justify-between">
+          {/* Brand Logo */}
+          <Link href="/" className="flex items-center gap-3 group">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[var(--gold-1)] via-[#b8883a] to-[#6d4614] flex items-center justify-center shadow-lg shadow-[var(--gold-glow)] group-hover:scale-105 transition-transform">
+              <Film size={18} className="text-[#080a0d]" />
+            </div>
+            <div>
+              <span className="font-display text-xl font-bold text-[var(--text-1)] tracking-tight">
+                Ciné<span className="text-gold">Estate</span>
+              </span>
+              <span className="hidden sm:inline-block ml-2 text-[10px] uppercase font-bold tracking-widest text-[var(--gold-1)] opacity-70">
+                AI Studio
+              </span>
+            </div>
+          </Link>
 
-      {/* Academic Workflow Stepper */}
-      <PhaseTracker
-        currentPhase={currentPhase}
-        onSelectPhase={(phaseId) => {
-          setCurrentPhase(phaseId);
-          if (phaseId === 3 && activeProject) {
-            loadPlan(activeProject.id);
-          }
-        }}
-        hasImages={hasValidatedImages}
-      />
+          {/* Nav Links */}
+          <div className="hidden md:flex items-center gap-8">
+            <a
+              href="#pipeline"
+              className="text-xs uppercase tracking-wider font-semibold text-[var(--text-2)] hover:text-[var(--gold-2)] transition-colors"
+            >
+              Pipeline
+            </a>
+            <a
+              href="#simulator"
+              className="text-xs uppercase tracking-wider font-semibold text-[var(--text-2)] hover:text-[var(--gold-2)] transition-colors"
+            >
+              Interactive Preview
+            </a>
+            <a
+              href="#comparison"
+              className="text-xs uppercase tracking-wider font-semibold text-[var(--text-2)] hover:text-[var(--gold-2)] transition-colors"
+            >
+              Why CinéEstate
+            </a>
+            <a
+              href="#specifications"
+              className="text-xs uppercase tracking-wider font-semibold text-[var(--text-2)] hover:text-[var(--gold-2)] transition-colors"
+            >
+              Architecture
+            </a>
+          </div>
 
-      {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full grow space-y-7 relative z-10">
-        {/* Dynamic Alert Banner */}
-        {alert && (
-          <AlertBanner
-            type={alert.type}
-            title={alert.title}
-            message={alert.message}
-            onDismiss={() => setAlert(null)}
-          />
-        )}
+          {/* Action CTA */}
+          <div className="flex items-center gap-4">
+            <Link
+              href="/studio"
+              className="btn-gold px-5 py-2.5 rounded-xl text-xs font-bold inline-flex items-center gap-2 shadow-lg hover:scale-105"
+            >
+              <span>Launch Studio</span>
+              <ArrowRight size={14} />
+            </Link>
+          </div>
+        </div>
+      </nav>
 
-        {/* Backend Offline Warning if applicable */}
-        {isBackendHealthy === false && (
-          <AlertBanner
-            type="error"
-            title="Backend Server Offline"
-            message="Cannot reach the FastAPI backend at http://localhost:8000. Please ensure the backend uvicorn process is active."
-          />
-        )}
+      {/* ── HERO SECTION ── */}
+      <section className="relative pt-36 pb-20 px-6 sm:px-8 overflow-hidden hero-spotlight">
+        {/* Subtle grid background */}
+        <div className="absolute inset-0 hero-grid opacity-50 pointer-events-none" />
 
-        {/* PHASE 1 VIEW: Upload & Ingestion */}
-        {currentPhase === 1 && (
-          <div className="space-y-6 animate-in fade-in duration-200">
-            {/* Intro Section */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-bold tracking-tight text-slate-100 flex items-center gap-2">
-                  <span>Step 1: Property Image Ingestion &amp; Validation</span>
-                </h2>
-                <p className="text-sm text-slate-400 max-w-3xl mt-1 leading-relaxed">
-                  Upload interior and exterior property photographs. Each image is verified for
-                  dimensions, aspect ratio, format compliance, and exact duplicates.
-                </p>
+        <div className="relative z-10 max-w-5xl mx-auto text-center space-y-8">
+          {/* Eyebrow Badge */}
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-[var(--border-2)] bg-[var(--gold-dim)] shadow-md anim-fade-up">
+            <Sparkles size={13} className="text-[var(--gold-2)]" />
+            <span className="text-[11px] font-bold text-[var(--gold-2)] tracking-widest uppercase">
+              Autonomous Real Estate Cinematography · Gemini 2.5 &amp; Google Veo
+            </span>
+          </div>
+
+          {/* Main Headline */}
+          <h1 className="font-display text-4xl sm:text-6xl md:text-7xl font-bold leading-[1.08] tracking-tight text-[var(--text-1)] anim-fade-up-1">
+            Transform Still Photos Into{" "}
+            <span className="text-gold block sm:inline">Flowing Cinematic Tours</span>
+          </h1>
+
+          {/* Subheading */}
+          <p className="text-base sm:text-lg text-[var(--text-2)] max-w-2xl mx-auto leading-relaxed anim-fade-up-2">
+            Upload raw listing photography. Our multimodal pipeline understands spatial room geometry, plots the optimal walkthrough sequence, and synthesizes stabilized HD video tours with restrained camera motions.
+          </p>
+
+          {/* CTAs */}
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-2 anim-fade-up-3">
+            <Link
+              href="/studio"
+              className="btn-gold px-8 py-4 rounded-xl text-sm font-bold inline-flex items-center justify-center gap-2.5 glow-gold hover:scale-105 w-full sm:w-auto"
+            >
+              <Play size={17} className="fill-current" />
+              Launch Generation Studio
+            </Link>
+            <a
+              href="#pipeline"
+              className="btn-ghost px-7 py-4 rounded-xl text-sm font-semibold inline-flex items-center justify-center gap-2 w-full sm:w-auto hover:border-[var(--gold-1)]"
+            >
+              <span>Explore 4-Phase Engine</span>
+              <ArrowRight size={15} />
+            </a>
+          </div>
+
+          {/* Key Metrics Bar */}
+          <div className="pt-12 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-4xl mx-auto text-center border-t border-[var(--border-1)] anim-fade-up-4">
+            <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-0)]">
+              <p className="font-display text-2xl sm:text-3xl font-bold text-[var(--gold-2)]">4 Phases</p>
+              <p className="text-[10px] uppercase font-bold tracking-wider text-[var(--text-3)] mt-1">Autonomous Engine</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-0)]">
+              <p className="font-display text-2xl sm:text-3xl font-bold text-[var(--gold-2)]">Gemini 2.5</p>
+              <p className="text-[10px] uppercase font-bold tracking-wider text-[var(--text-3)] mt-1">Scene Intelligence</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-0)]">
+              <p className="font-display text-2xl sm:text-3xl font-bold text-[var(--gold-2)]">Google Veo</p>
+              <p className="text-[10px] uppercase font-bold tracking-wider text-[var(--text-3)] mt-1">Video Diffusion</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-0)]">
+              <p className="font-display text-2xl sm:text-3xl font-bold text-[var(--gold-2)]">&lt; 90s</p>
+              <p className="text-[10px] uppercase font-bold tracking-wider text-[var(--text-3)] mt-1">Generation Speed</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── INTERACTIVE SIMULATOR SHOWCASE ── */}
+      <section id="simulator" className="py-20 px-6 sm:px-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-12">
+            <p className="text-xs font-bold tracking-[0.2em] uppercase text-[var(--gold-1)] mb-2">
+              Interactive Preview
+            </p>
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-[var(--text-1)]">
+              Topological Route &amp; Camera HUD
+            </h2>
+            <p className="text-sm text-[var(--text-2)] max-w-xl mx-auto mt-2">
+              Experience how CinéEstate transforms disjointed still photos into a synchronized multi-scene camera journey.
+            </p>
+          </div>
+
+          <div className="glass-gold rounded-3xl p-6 sm:p-8 border border-[var(--border-2)] shadow-2xl space-y-6">
+            {/* Top HUD Controls */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-[var(--border-1)]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[var(--gold-dim)] border border-[var(--border-2)] flex items-center justify-center text-lg">
+                  {rooms[activeRoomIndex].icon}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-[var(--gold-1)] uppercase tracking-wider">
+                      Shot {activeRoomIndex + 1} of {rooms.length}
+                    </span>
+                    <span className="badge badge-success text-[9px]">Stabilized Motion</span>
+                  </div>
+                  <h3 className="font-display text-lg font-bold text-[var(--text-1)]">
+                    {rooms[activeRoomIndex].name}
+                  </h3>
+                </div>
               </div>
 
-              {hasValidatedImages && (
+              <div className="flex items-center gap-3 w-full sm:w-auto">
                 <button
                   type="button"
-                  onClick={() => setCurrentPhase(2)}
-                  className="btn-primary px-4 py-2 text-xs font-semibold rounded-xl flex items-center gap-2 self-start"
+                  onClick={() => setIsPlayingDemo(!isPlayingDemo)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+                    isPlayingDemo
+                      ? "bg-[var(--gold-1)] text-[#080a0d] shadow-lg shadow-[var(--gold-glow)]"
+                      : "border border-[var(--border-2)] bg-[var(--gold-dim)] text-[var(--gold-2)] hover:bg-[var(--gold-glow)]"
+                  }`}
                 >
-                  <span>Go to Scene Understanding</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  <Play size={13} className={isPlayingDemo ? "fill-current" : ""} />
+                  {isPlayingDemo ? "Simulating Walkthrough…" : "Play Live Simulation"}
                 </button>
-              )}
+
+                <Link
+                  href="/studio"
+                  className="btn-gold px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0"
+                >
+                  <span>Build Yours</span>
+                  <ArrowRight size={13} />
+                </Link>
+              </div>
             </div>
 
-            {/* Property Form */}
-            <PropertyForm
-              propertyName={propertyName}
-              onChangeName={setPropertyName}
-              activeProject={activeProject}
-              disabled={isUploading}
-            />
+            {/* Main Stage Display */}
+            <div className="grid lg:grid-cols-12 gap-6 items-center">
+              {/* Left 7 Cols: Video Simulation Canvas */}
+              <div className="lg:col-span-7 relative rounded-2xl overflow-hidden bg-[#030507] border border-[var(--border-2)] aspect-video flex flex-col justify-between p-5 shadow-2xl">
+                {/* Ambient glow in canvas */}
+                <div className="absolute inset-0 bg-gradient-to-tr from-[#d4a853]/10 via-transparent to-transparent pointer-events-none" />
 
-            {/* Dropzone */}
-            <Dropzone
-              onFilesSelected={handleFilesSelected}
-              disabled={isUploading || isBackendHealthy === false}
-            />
-
-            {/* Staged & Validated Image Grid */}
-            <ImageGrid
-              images={stagedImages}
-              onRemove={handleRemoveImage}
-              onClearAll={handleClearAll}
-              onUpload={handleUploadAndValidate}
-              onPreview={setSelectedPreviewImage}
-              isUploading={isUploading}
-              hasUnsavedChanges={hasUnsavedChanges}
-              onContinueToPhase2={() => setCurrentPhase(2)}
-            />
-          </div>
-        )}
-
-        {/* PHASE 2 VIEW: Scene Understanding & Room Classification */}
-        {currentPhase === 2 && (
-          <div className="space-y-6 animate-in fade-in duration-200">
-            {activeProject && activeProject.images.length > 0 ? (
-              <SceneResultsView
-                project={activeProject}
-                images={activeProject.images}
-                onAnalyzeAll={handleAnalyzeAll}
-                onUpdateScene={handleUpdateScene}
-                onReanalyzeImage={handleReanalyzeSingle}
-                onInspectImage={setSelectedPreviewImage}
-                onBackToUpload={() => setCurrentPhase(1)}
-                onProceedToPhase3={() => {
-                  setCurrentPhase(3);
-                  if (activeProject) loadPlan(activeProject.id);
-                }}
-                isAnalyzing={isAnalyzing}
-              />
-            ) : (
-              <div className="glass-card-elevated rounded-3xl p-12 text-center space-y-4 border border-slate-800">
-                <div className="w-14 h-14 rounded-2xl bg-indigo-950/60 border border-indigo-500/30 text-indigo-400 flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(99,102,241,0.2)]">
-                  <Layers className="w-7 h-7" />
+                {/* Top overlay metadata */}
+                <div className="relative z-10 flex items-center justify-between">
+                  <div className="flex items-center gap-2 bg-[#080a0d]/80 px-3 py-1 rounded-full border border-[var(--border-1)] text-[11px] font-mono text-[var(--gold-2)]">
+                    <Camera size={12} className="text-[var(--gold-1)]" />
+                    <span>{rooms[activeRoomIndex].motion}</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-[#080a0d]/80 px-3 py-1 rounded-full border border-[var(--border-1)] text-[11px] font-mono text-emerald-400">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                    <span>Veo 2.0 HD Ready</span>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-base font-semibold text-slate-100">
-                    No Validated Photographs Available
-                  </h3>
-                  <p className="text-xs text-slate-400 max-w-md mx-auto mt-1.5 leading-relaxed">
-                    Please upload and validate property photographs in Step 1 before proceeding to visual
-                    scene understanding.
+
+                {/* Center visual emblem */}
+                <div className="relative z-10 text-center space-y-2 py-8">
+                  <div className="w-16 h-16 rounded-3xl bg-[var(--gold-dim)] border border-[var(--border-2)] mx-auto flex items-center justify-center text-3xl shadow-lg">
+                    {rooms[activeRoomIndex].icon}
+                  </div>
+                  <p className="font-display text-xl font-bold text-[var(--text-1)]">
+                    {rooms[activeRoomIndex].name}
+                  </p>
+                  <p className="text-xs text-[var(--gold-2)] font-mono">
+                    Scene Type: {rooms[activeRoomIndex].type}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPhase(1)}
-                  className="btn-primary px-5 py-2.5 text-xs font-semibold rounded-xl"
-                >
-                  Return to Step 1 (Upload)
-                </button>
-              </div>
-            )}
-          </div>
-        )}
 
-        {/* PHASE 3 VIEW: Walkthrough Sequence & Motion Planning */}
-        {currentPhase === 3 && (
-          <div className="space-y-6 animate-in fade-in duration-200">
-            {isLoadingPlan ? (
-              <div className="glass-card-elevated rounded-3xl p-12 text-center space-y-4 border border-slate-800">
-                <Loader2 className="w-8 h-8 animate-spin text-indigo-400 mx-auto" />
-                <p className="text-sm font-semibold text-slate-200">
-                  Synthesizing topological walkthrough sequence &amp; camera trajectory...
+                {/* Bottom Scrubbing Timeline */}
+                <div className="relative z-10 space-y-2">
+                  <div className="flex items-center justify-between text-[10px] font-mono text-[var(--text-3)]">
+                    <span>Scene 0{activeRoomIndex + 1} / 05</span>
+                    <span>1080p @ 24fps · Straight Cut Transition</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-[var(--border-1)] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-[var(--gold-1)] to-[var(--gold-2)] transition-all duration-500"
+                      style={{ width: `${((activeRoomIndex + 1) / rooms.length) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Right 5 Cols: Scene Sequence Graph */}
+              <div className="lg:col-span-5 space-y-3">
+                <p className="text-xs font-bold tracking-wider uppercase text-[var(--gold-1)] flex items-center gap-1.5">
+                  <Compass size={14} />
+                  Topological Traversal Order
+                </p>
+
+                <div className="space-y-2">
+                  {rooms.map((room, idx) => {
+                    const isCurrent = idx === activeRoomIndex;
+                    return (
+                      <div
+                        key={room.name}
+                        onClick={() => setActiveRoomIndex(idx)}
+                        className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                          isCurrent
+                            ? "bg-[var(--gold-dim)] border-[var(--gold-1)] shadow-md shadow-[var(--gold-glow)]"
+                            : "bg-[var(--bg-card)] border-[var(--border-1)] hover:border-[var(--border-2)]"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`w-6 h-6 rounded-lg text-xs font-mono font-bold flex items-center justify-center ${
+                              isCurrent
+                                ? "bg-[var(--gold-1)] text-[#080a0d]"
+                                : "bg-[var(--bg-0)] text-[var(--text-3)] border border-[var(--border-1)]"
+                            }`}
+                          >
+                            0{idx + 1}
+                          </span>
+                          <div>
+                            <p
+                              className={`text-xs font-bold ${
+                                isCurrent ? "text-[var(--text-1)]" : "text-[var(--text-2)]"
+                              }`}
+                            >
+                              {room.name}
+                            </p>
+                            <p className="text-[10px] text-[var(--text-3)] font-mono">{room.motion}</p>
+                          </div>
+                        </div>
+
+                        <span className="text-base">{room.icon}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── 4-PHASE AUTONOMOUS PIPELINE ── */}
+      <section id="pipeline" className="py-24 px-6 sm:px-8 bg-[var(--bg-1)] border-y border-[var(--border-0)]">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-16">
+            <p className="text-xs font-bold tracking-[0.2em] uppercase text-[var(--gold-1)] mb-2">
+              End-to-End Pipeline
+            </p>
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-[var(--text-1)]">
+              Four Stages from Photo to Video
+            </h2>
+            <p className="text-sm text-[var(--text-2)] max-w-xl mx-auto mt-2">
+              Every photograph traverses four specialized processing layers to ensure photorealism and spatial integrity.
+            </p>
+          </div>
+
+          {/* Tab buttons */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
+            {PIPELINE_STAGES.map((stg) => {
+              const active = stg.id === activeStage;
+              const Icon = stg.icon;
+              return (
+                <button
+                  key={stg.id}
+                  type="button"
+                  onClick={() => setActiveStage(stg.id)}
+                  className={`p-4 rounded-2xl border text-left transition-all ${
+                    active
+                      ? "bg-[var(--gold-dim)] border-[var(--gold-1)] shadow-lg shadow-[var(--gold-glow)]"
+                      : "bg-[var(--bg-card)] border-[var(--border-1)] hover:border-[var(--border-2)] opacity-70 hover:opacity-100"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--gold-2)]">
+                      {stg.phase}
+                    </span>
+                    <Icon size={16} className={active ? "text-[var(--gold-1)]" : "text-[var(--text-3)]"} />
+                  </div>
+                  <p className="text-xs font-bold text-[var(--text-1)] leading-tight">{stg.title}</p>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Active Stage Detail Showcase */}
+          <div className="glass-gold rounded-3xl p-8 sm:p-10 border border-[var(--border-2)] grid md:grid-cols-12 gap-8 items-center">
+            <div className="md:col-span-7 space-y-5">
+              <div className="flex items-center gap-2">
+                <span className="badge badge-gold">{currentStageData.phase}</span>
+                <span className="text-xs font-mono text-[var(--text-3)]">Autonomous Execution</span>
+              </div>
+
+              <h3 className="font-display text-2xl sm:text-3xl font-bold text-[var(--text-1)]">
+                {currentStageData.title}
+              </h3>
+              <p className="text-xs font-semibold text-[var(--gold-2)] uppercase tracking-wider">
+                {currentStageData.tagline}
+              </p>
+              <p className="text-sm text-[var(--text-2)] leading-relaxed">
+                {currentStageData.description}
+              </p>
+
+              <div className="p-4 rounded-2xl bg-[var(--bg-0)] border border-[var(--border-1)] flex items-start gap-3">
+                <Sparkle size={16} className="text-[var(--gold-1)] shrink-0 mt-0.5" />
+                <p className="text-xs text-[var(--text-2)] italic leading-relaxed">
+                  {currentStageData.highlight}
                 </p>
               </div>
-            ) : activeProject && currentPlan && currentPlan.scenes.length > 0 ? (
-              <WalkthroughPlanView
-                project={activeProject}
-                plan={currentPlan}
-                onSavePlan={handleSavePlan}
-                onRebuildPlan={handleRebuildPlan}
-                onInspectImage={(imgId) => {
-                  const targetImg = activeProject.images.find((img) => img.id === imgId);
-                  if (targetImg) setSelectedPreviewImage(targetImg);
-                }}
-                onBackToScenes={() => setCurrentPhase(2)}
-                isSaving={isSavingPlan}
-                isRebuilding={isRebuildingPlan}
-              />
-            ) : (
-              <div className="glass-card-elevated rounded-3xl p-12 text-center space-y-4 border border-slate-800">
-                <div className="w-14 h-14 rounded-2xl bg-indigo-950/60 border border-indigo-500/30 text-indigo-400 flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(99,102,241,0.2)]">
-                  <Route className="w-7 h-7" />
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold text-slate-100">
-                    No Analyzed Photographs Ready for Planning
-                  </h3>
-                  <p className="text-xs text-slate-400 max-w-md mx-auto mt-1.5 leading-relaxed">
-                    Please upload photos in Step 1 and run Scene Understanding in Step 2 to generate
-                    a walkthrough sequence plan.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPhase(2)}
-                  className="btn-primary px-5 py-2.5 text-xs font-semibold rounded-xl"
-                >
-                  Go to Scene Understanding (Phase 2)
-                </button>
+            </div>
+
+            <div className="md:col-span-5 space-y-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-[var(--text-3)]">
+                Stage Specifications
+              </p>
+              <div className="space-y-3">
+                {currentStageData.metrics.map((m) => (
+                  <div
+                    key={m.label}
+                    className="p-4 rounded-xl bg-[var(--bg-0)] border border-[var(--border-1)] flex items-center justify-between"
+                  >
+                    <span className="text-xs text-[var(--text-2)]">{m.label}</span>
+                    <span className="text-xs font-mono font-bold text-[var(--gold-2)]">{m.value}</span>
+                  </div>
+                ))}
               </div>
-            )}
+
+              <div className="pt-2">
+                <Link
+                  href="/studio"
+                  className="btn-gold w-full py-3 rounded-xl text-xs font-bold inline-flex items-center justify-center gap-2 shadow-md"
+                >
+                  <span>Open Stage in Studio</span>
+                  <ArrowRight size={14} />
+                </Link>
+              </div>
+            </div>
           </div>
-        )}
-      </main>
+        </div>
+      </section>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-800/80 glass-card-elevated py-5 text-center text-xs text-slate-500 mt-auto relative z-10">
-        <p className="flex items-center justify-center gap-2 flex-wrap">
-          <span>AI Property Walkthrough Prototype</span>
-          <span>&bull;</span>
-          <span className="text-indigo-400">Phase 3: Walkthrough Sequence &amp; Camera Planning</span>
-          <span>&bull;</span>
-          <span>Academic Minor Project</span>
-        </p>
+      {/* ── VALUE COMPARISON: WHY CINÉESTATE ── */}
+      <section id="comparison" className="py-24 px-6 sm:px-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-16">
+            <p className="text-xs font-bold tracking-[0.2em] uppercase text-[var(--gold-1)] mb-2">
+              The Strategic Advantage
+            </p>
+            <h2 className="font-display text-3xl sm:text-4xl font-bold text-[var(--text-1)]">
+              Traditional Production vs. CinéEstate
+            </h2>
+            <p className="text-sm text-[var(--text-2)] max-w-xl mx-auto mt-2">
+              Eliminate expensive on-site videography crews and multi-day turnarounds.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-8">
+            {/* Traditional Card */}
+            <div className="rounded-3xl p-8 bg-[var(--bg-card)] border border-[var(--border-0)] space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="font-display text-xl font-bold text-[var(--text-2)]">
+                  Traditional Production
+                </h3>
+                <span className="badge badge-error">Legacy</span>
+              </div>
+              <ul className="space-y-4 text-xs text-[var(--text-3)]">
+                <li className="flex items-start gap-3">
+                  <X size={15} className="text-red-400 shrink-0 mt-0.5" />
+                  <span>Cost ranges from $800 to $2,500 per property listing</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <X size={15} className="text-red-400 shrink-0 mt-0.5" />
+                  <span>Requires 3–5 business days for shooting and editing</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <X size={15} className="text-red-400 shrink-0 mt-0.5" />
+                  <span>Vulnerable to weather, bad daylight, and tenant scheduling</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <X size={15} className="text-red-400 shrink-0 mt-0.5" />
+                  <span>Re-shoots require costly on-site return visits</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* CinéEstate Card */}
+            <div className="rounded-3xl p-8 glass-gold border border-[var(--border-2)] space-y-6 shadow-2xl relative">
+              <div className="flex items-center justify-between">
+                <h3 className="font-display text-xl font-bold text-[var(--gold-2)]">
+                  CinéEstate AI Studio
+                </h3>
+                <span className="badge badge-gold">Next-Gen</span>
+              </div>
+              <ul className="space-y-4 text-xs text-[var(--text-1)]">
+                <li className="flex items-start gap-3">
+                  <Check size={15} className="text-emerald-400 shrink-0 mt-0.5" />
+                  <span>Leverages existing MLS &amp; portfolio photographs instantly</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check size={15} className="text-emerald-400 shrink-0 mt-0.5" />
+                  <span>Complete video walkthrough synthesized in under 90 seconds</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check size={15} className="text-emerald-400 shrink-0 mt-0.5" />
+                  <span>AI lighting normalization &amp; steady-cam motion paths</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <Check size={15} className="text-emerald-400 shrink-0 mt-0.5" />
+                  <span>Instant per-clip camera retries &amp; custom motion overrides</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── TECHNICAL SPECIFICATIONS ── */}
+      <section id="specifications" className="py-20 px-6 sm:px-8 bg-[var(--bg-1)] border-t border-[var(--border-0)]">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-12">
+            <p className="text-xs font-bold tracking-[0.2em] uppercase text-[var(--gold-1)] mb-2">
+              Architecture &amp; Foundation
+            </p>
+            <h2 className="font-display text-3xl font-bold text-[var(--text-1)]">
+              Built on Modern AI Primitives
+            </h2>
+          </div>
+
+          <div className="grid sm:grid-cols-3 gap-6">
+            <div className="p-6 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-1)] space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-[var(--gold-dim)] border border-[var(--border-2)] flex items-center justify-center">
+                <Brain size={18} className="text-[var(--gold-2)]" />
+              </div>
+              <h4 className="font-bold text-sm text-[var(--text-1)]">Gemini 2.5 Flash</h4>
+              <p className="text-xs text-[var(--text-2)] leading-relaxed">
+                Multimodal spatial vision extracting architectural categories, light sources, and room adjacency graphs.
+              </p>
+            </div>
+
+            <div className="p-6 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-1)] space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-[var(--gold-dim)] border border-[var(--border-2)] flex items-center justify-center">
+                <Video size={18} className="text-[var(--gold-2)]" />
+              </div>
+              <h4 className="font-bold text-sm text-[var(--text-1)]">Google Veo 2.0</h4>
+              <p className="text-xs text-[var(--text-2)] leading-relaxed">
+                Advanced image-to-video diffusion maintaining geometric consistency and realistic physical camera dynamics.
+              </p>
+            </div>
+
+            <div className="p-6 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-1)] space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-[var(--gold-dim)] border border-[var(--border-2)] flex items-center justify-center">
+                <Zap size={18} className="text-[var(--gold-2)]" />
+              </div>
+              <h4 className="font-bold text-sm text-[var(--text-1)]">FastAPI + Next.js</h4>
+              <p className="text-xs text-[var(--text-2)] leading-relaxed">
+                Asynchronous task queue backend with real-time SSE progress streaming and modular client-side state.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── CALL TO ACTION BANNER ── */}
+      <section className="py-24 px-6 sm:px-8 border-t border-[var(--border-1)] text-center">
+        <div className="max-w-3xl mx-auto space-y-6">
+          <h2 className="font-display text-4xl sm:text-5xl font-bold text-[var(--text-1)] leading-tight">
+            Ready to generate your first{" "}
+            <span className="text-gold">cinematic walkthrough?</span>
+          </h2>
+          <p className="text-sm sm:text-base text-[var(--text-2)] max-w-xl mx-auto">
+            Upload your property images now and watch your listing transform into a professional video tour in minutes.
+          </p>
+          <div className="pt-4">
+            <Link
+              href="/studio"
+              className="btn-gold px-10 py-4 rounded-xl text-sm font-bold inline-flex items-center gap-3 glow-gold hover:scale-105"
+            >
+              <Play size={18} className="fill-current" />
+              Launch Generation Studio
+              <ArrowRight size={16} />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FOOTER ── */}
+      <footer className="border-t border-[var(--border-0)] py-8 px-6 sm:px-8 bg-[var(--bg-0)]">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[var(--gold-1)] to-[#8a5e20] flex items-center justify-center">
+              <Film size={14} className="text-[#080a0d]" />
+            </div>
+            <span className="font-display font-bold text-sm text-[var(--text-1)]">
+              Ciné<span className="text-gold">Estate</span>
+            </span>
+          </div>
+
+          <p className="text-xs text-[var(--text-3)] text-center sm:text-left">
+            AI-Powered Real Estate Walkthrough Video Generation Platform
+          </p>
+
+          <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-mono">
+            <CheckCircle2 size={13} />
+            <span>Systems Online</span>
+          </div>
+        </div>
       </footer>
-
-      {/* Image Inspection Modal */}
-      <ImagePreviewModal
-        image={selectedPreviewImage}
-        onClose={() => setSelectedPreviewImage(null)}
-      />
-
-      {/* Next Phase Transition Modal */}
-      <NextPhaseModal
-        isOpen={isNextPhaseModalOpen}
-        onClose={() => setIsNextPhaseModalOpen(false)}
-        project={activeProject}
-      />
     </div>
   );
 }

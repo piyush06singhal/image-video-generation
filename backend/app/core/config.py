@@ -27,6 +27,19 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: Optional[str] = None
     AI_MODEL: str = "gemini-2.5-flash"  # default vision model
     AI_REQUEST_TIMEOUT_SECONDS: float = 30.0
+
+    # Image-to-Video Generation Configuration (Phase 4)
+    VIDEO_PROVIDER: str = "gemini_veo"
+    VIDEO_API_KEY: Optional[str] = None
+    VIDEO_MODEL: str = "veo-3.1-generate-preview"
+    MAX_CONCURRENT_GENERATIONS: int = 2
+    VIDEO_DURATION_SECONDS: int = 4
+    VIDEO_FPS: int = 24
+    VIDEO_ASPECT_RATIO: str = "16:9"
+    VIDEO_RESOLUTION: str = "720p"
+    VIDEO_POLL_INTERVAL_SECONDS: float = 10.0
+    VIDEO_POLL_TIMEOUT_SECONDS: float = 300.0
+    MAX_GENERATION_RETRIES: int = 3
     
     # CORS
     CORS_ORIGINS: Union[List[str], str] = [

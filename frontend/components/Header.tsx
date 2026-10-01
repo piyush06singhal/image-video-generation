@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Building2, CheckCircle2, AlertCircle, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { Building2, RefreshCw, Wifi, WifiOff } from "lucide-react";
 
 interface HeaderProps {
   isBackendHealthy: boolean | null;

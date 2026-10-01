@@ -11,6 +11,7 @@ from app.main import app
 from app.services.storage_service import StorageService, storage_service
 from app.services.project_service import project_service
 from app.services.scene_service import scene_service
+from app.services.video_generation import video_generation_service
 from app.services.walkthrough_planner import walkthrough_planner
 
 
@@ -26,11 +27,13 @@ def isolated_storage(tmp_path):
     original_project_storage = project_service.storage
     original_scene_storage = scene_service.storage
     original_planner_storage = walkthrough_planner.storage
+    original_video_storage = video_generation_service.storage
     
     test_storage = StorageService(base_storage_dir=temp_storage)
     project_service.storage = test_storage
     scene_service.storage = test_storage
     walkthrough_planner.storage = test_storage
+    video_generation_service.storage = test_storage
     
     yield test_storage
     
@@ -38,6 +41,7 @@ def isolated_storage(tmp_path):
     project_service.storage = original_project_storage
     scene_service.storage = original_scene_storage
     walkthrough_planner.storage = original_planner_storage
+    video_generation_service.storage = original_video_storage
 
 
 

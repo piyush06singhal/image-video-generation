@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   GenerationPlan,
   PlannedScene,
@@ -12,56 +12,47 @@ import { Project } from "@/types/project";
 import { PlannedSceneCard } from "./PlannedSceneCard";
 import {
   Route,
-  Sparkles,
   RefreshCw,
   Save,
   Clock,
-  Layers,
+  Film,
   ArrowLeft,
-  CheckCircle2,
+  ArrowRight,
   AlertCircle,
-  Eye,
   PlusCircle,
   Loader2,
-  Film,
   Compass,
 } from "lucide-react";
 
 interface WalkthroughPlanViewProps {
-  project: Project;
+  project?: Project;
   plan: GenerationPlan;
   onSavePlan: (updatePayload: PlanUpdateRequest) => Promise<void>;
   onRebuildPlan: () => Promise<void>;
   onInspectImage: (imageId: string) => void;
   onBackToScenes: () => void;
+  onProceedToPhase4?: () => void;
   isSaving: boolean;
   isRebuilding: boolean;
 }
 
 export const WalkthroughPlanView: React.FC<WalkthroughPlanViewProps> = ({
-  project,
   plan,
   onSavePlan,
   onRebuildPlan,
   onInspectImage,
   onBackToScenes,
+  onProceedToPhase4,
   isSaving,
   isRebuilding,
 }) => {
-  const [scenes, setScenes] = useState<PlannedScene[]>(plan.scenes);
+  const [scenes, setScenes] = useState<PlannedScene[]>(() => plan.scenes);
   const [removedSceneIds, setRemovedSceneIds] = useState<string[]>(
-    plan.removed_scene_ids || []
+    () => plan.removed_scene_ids || []
   );
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   const [showGraphInspector, setShowGraphInspector] = useState(false);
-
-  // Sync state if external plan updates
-  useEffect(() => {
-    setScenes(plan.scenes);
-    setRemovedSceneIds(plan.removed_scene_ids || []);
-    setHasUnsavedChanges(false);
-  }, [plan]);
 
   // Move scene up
   const handleMoveUp = (index: number) => {
@@ -71,7 +62,6 @@ export const WalkthroughPlanView: React.FC<WalkthroughPlanViewProps> = ({
     updated[index] = updated[index - 1];
     updated[index - 1] = temp;
 
-    // Recalculate order numbers and transitions
     const reordered = updated.map((s, idx) => ({ ...s, order: idx + 1 }));
     setScenes(reordered);
     setHasUnsavedChanges(true);
@@ -225,45 +215,45 @@ export const WalkthroughPlanView: React.FC<WalkthroughPlanViewProps> = ({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 anim-fade-up">
       {/* Top Action Header */}
-      <div className="glass-card-elevated rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-5 border border-slate-800">
+      <div className="glass-gold rounded-2xl p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5 border border-[var(--border-2)]">
         <div>
           <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
-            <div className="w-8 h-8 rounded-xl bg-indigo-600/30 border border-indigo-500/40 text-indigo-400 flex items-center justify-center shadow-[0_0_15px_rgba(99,102,241,0.3)]">
-              <Route className="w-4 h-4 text-indigo-300" />
+            <div className="w-8 h-8 rounded-xl bg-[var(--gold-dim)] border border-[var(--border-2)] text-[var(--gold-2)] flex items-center justify-center">
+              <Route className="w-4 h-4" />
             </div>
-            <h3 className="text-base font-semibold text-slate-100">
-              Phase 3: Walkthrough Sequence &amp; Camera Motion Planning
+            <h3 className="text-lg font-bold font-display text-[var(--text-1)]">
+              Walkthrough Sequence &amp; Motion Planning
             </h3>
-            <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-indigo-950/70 text-indigo-300 border border-indigo-500/30 font-semibold">
+            <span className="badge badge-gold font-mono">
               Plan v{plan.plan_version} &bull; {plan.source === "user" ? "User Customized" : "AI Baseline"}
             </span>
           </div>
 
-          <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
+          <p className="text-xs text-[var(--text-2)] max-w-2xl leading-relaxed">
             Review the sequenced property walkthrough route, camera movements, and transition pacing.
             You can reorder shots via drag &amp; drop, adjust camera strategies, or exclude scenes.
           </p>
 
           {/* Quick Metrics Bar */}
-          <div className="flex items-center gap-3.5 mt-3 text-xs text-slate-300 flex-wrap">
-            <div className="flex items-center gap-1.5 bg-slate-900/80 px-2.5 py-1 rounded-xl border border-slate-800">
-              <Film className="w-3.5 h-3.5 text-indigo-400" />
+          <div className="flex items-center gap-3.5 mt-3.5 text-xs text-[var(--text-2)] flex-wrap">
+            <div className="flex items-center gap-1.5 bg-[var(--bg-0)] px-3 py-1 rounded-xl border border-[var(--border-1)]">
+              <Film className="w-3.5 h-3.5 text-[var(--gold-2)]" />
               <span>
-                <strong>{scenes.length}</strong> Planned Shots
+                <strong className="text-[var(--text-1)]">{scenes.length}</strong> Planned Shots
               </span>
             </div>
-            <div className="flex items-center gap-1.5 bg-slate-900/80 px-2.5 py-1 rounded-xl border border-slate-800 font-mono">
-              <Clock className="w-3.5 h-3.5 text-amber-400" />
+            <div className="flex items-center gap-1.5 bg-[var(--bg-0)] px-3 py-1 rounded-xl border border-[var(--border-1)] font-mono">
+              <Clock className="w-3.5 h-3.5 text-[var(--gold-1)]" />
               <span>~{totalDuration.toFixed(1)}s Total Runtime</span>
             </div>
             <button
               type="button"
               onClick={() => setShowGraphInspector(!showGraphInspector)}
-              className="flex items-center gap-1.5 bg-slate-900/80 hover:bg-slate-800 px-2.5 py-1 rounded-xl border border-slate-800 text-indigo-300 hover:text-white transition-colors"
+              className="btn-ghost flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs transition-colors"
             >
-              <Compass className="w-3.5 h-3.5" />
+              <Compass className="w-3.5 h-3.5 text-[var(--gold-2)]" />
               <span>{showGraphInspector ? "Hide Scene Graph" : "Inspect Scene Graph"}</span>
             </button>
           </div>
@@ -275,7 +265,7 @@ export const WalkthroughPlanView: React.FC<WalkthroughPlanViewProps> = ({
             type="button"
             onClick={onBackToScenes}
             disabled={isSaving || isRebuilding}
-            className="px-3.5 py-2 text-xs font-medium text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 rounded-xl transition-all flex items-center gap-1.5"
+            className="btn-ghost px-3.5 py-2 text-xs font-semibold rounded-xl flex items-center gap-1.5"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Manage Scenes</span>
@@ -285,10 +275,10 @@ export const WalkthroughPlanView: React.FC<WalkthroughPlanViewProps> = ({
             type="button"
             onClick={onRebuildPlan}
             disabled={isSaving || isRebuilding}
-            className="px-3.5 py-2 text-xs font-medium text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50"
+            className="btn-outline-gold px-3.5 py-2 text-xs font-semibold rounded-xl flex items-center gap-1.5 disabled:opacity-50"
             title="Re-run AI topological planner from scene analysis"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isRebuilding ? "animate-spin text-indigo-400" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isRebuilding ? "animate-spin text-[var(--gold-2)]" : ""}`} />
             <span>Regenerate AI Plan</span>
           </button>
 
@@ -296,16 +286,16 @@ export const WalkthroughPlanView: React.FC<WalkthroughPlanViewProps> = ({
             type="button"
             onClick={handleSave}
             disabled={isSaving || isRebuilding}
-            className={`px-4 py-2 text-xs font-semibold rounded-xl shadow-lg transition-all flex items-center gap-2 ${
+            className={`px-4 py-2 text-xs font-bold rounded-xl shadow-lg transition-all flex items-center gap-2 ${
               hasUnsavedChanges
-                ? "bg-emerald-400 hover:bg-emerald-300 text-emerald-950 shadow-[0_0_20px_rgba(16,185,129,0.35)]"
-                : "btn-primary"
+                ? "btn-gold animate-pulse"
+                : "btn-gold"
             } disabled:opacity-50`}
           >
             {isSaving ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Saving Plan...</span>
+                <span>Saving Plan…</span>
               </>
             ) : (
               <>
@@ -314,12 +304,24 @@ export const WalkthroughPlanView: React.FC<WalkthroughPlanViewProps> = ({
               </>
             )}
           </button>
+
+          {onProceedToPhase4 && (
+            <button
+              type="button"
+              onClick={onProceedToPhase4}
+              disabled={isSaving || isRebuilding}
+              className="btn-gold px-4 py-2 text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-lg"
+            >
+              <span>Generate Videos (Phase 4)</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
       {/* Unsaved Changes Banner */}
       {hasUnsavedChanges && (
-        <div className="glass-card rounded-2xl p-3 px-4 border border-amber-500/30 bg-amber-950/20 text-amber-300 text-xs flex items-center justify-between gap-3 animate-slide-up">
+        <div className="glass-gold rounded-2xl p-3 px-4 border border-amber-500/30 bg-amber-950/20 text-amber-300 text-xs flex items-center justify-between gap-3 anim-fade-up">
           <div className="flex items-center gap-2 font-medium">
             <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
             <span>You have modified the walkthrough sequence. Click &quot;Save Changes&quot; to persist your plan.</span>
@@ -337,10 +339,10 @@ export const WalkthroughPlanView: React.FC<WalkthroughPlanViewProps> = ({
 
       {/* Scene Graph Relationship Inspector (Collapsible) */}
       {showGraphInspector && plan.scene_graph && (
-        <div className="glass-card rounded-2xl p-5 border border-indigo-500/30 bg-indigo-950/20 space-y-3 animate-slide-up shadow-xl">
-          <div className="flex items-center justify-between font-semibold text-xs text-indigo-300 uppercase tracking-wider">
+        <div className="glass-gold rounded-2xl p-5 border border-[var(--border-2)] space-y-3 anim-fade-up shadow-xl">
+          <div className="flex items-center justify-between font-semibold text-xs text-[var(--gold-2)] uppercase tracking-wider">
             <span className="flex items-center gap-2">
-              <Compass className="w-4 h-4 text-indigo-400" />
+              <Compass className="w-4 h-4 text-[var(--gold-1)]" />
               Candidate Scene Graph Topology ({plan.scene_graph.nodes.length} Nodes &bull; {plan.scene_graph.edges.length} Discovered Edges)
             </span>
           </div>
@@ -353,22 +355,22 @@ export const WalkthroughPlanView: React.FC<WalkthroughPlanViewProps> = ({
                 return (
                   <div
                     key={idx}
-                    className="bg-slate-900/80 p-3 rounded-xl border border-slate-800 text-xs space-y-1"
+                    className="bg-[var(--bg-0)] p-3 rounded-xl border border-[var(--border-1)] text-xs space-y-1"
                   >
-                    <div className="flex items-center justify-between font-medium text-slate-200">
+                    <div className="flex items-center justify-between font-medium text-[var(--text-1)]">
                       <span>{nodeA?.label || edge.source_scene_id} ↔ {nodeB?.label || edge.target_scene_id}</span>
-                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30">
+                      <span className="badge badge-success font-mono text-[10px]">
                         {(edge.confidence * 100).toFixed(0)}%
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                    <p className="text-[11px] text-[var(--text-2)] leading-relaxed">
                       {edge.evidence}
                     </p>
                   </div>
                 );
               })
             ) : (
-              <p className="text-xs text-slate-500 col-span-2">
+              <p className="text-xs text-[var(--text-3)] col-span-2">
                 No explicit adjacency edges discovered; sequential ordering relies on standard residential room progression hierarchy.
               </p>
             )}
@@ -400,8 +402,8 @@ export const WalkthroughPlanView: React.FC<WalkthroughPlanViewProps> = ({
 
       {/* Excluded / Removed Scenes Tray */}
       {removedSceneIds.length > 0 && (
-        <div className="glass-card-elevated rounded-2xl p-5 border border-slate-800 space-y-3 bg-slate-900/40">
-          <div className="flex items-center justify-between font-semibold text-xs text-slate-400 uppercase tracking-wider">
+        <div className="glass-gold rounded-2xl p-5 border border-[var(--border-1)] space-y-3 bg-[var(--bg-0)]">
+          <div className="flex items-center justify-between font-semibold text-xs text-[var(--text-3)] uppercase tracking-wider">
             <span>Excluded from Walkthrough Video ({removedSceneIds.length})</span>
           </div>
 
@@ -412,10 +414,10 @@ export const WalkthroughPlanView: React.FC<WalkthroughPlanViewProps> = ({
               return (
                 <div
                   key={sceneId}
-                  className="bg-slate-900/80 p-3 rounded-xl border border-slate-800 flex items-center justify-between gap-3"
+                  className="bg-[var(--bg-card)] p-3 rounded-xl border border-[var(--border-1)] flex items-center justify-between gap-3"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-12 h-10 rounded-lg overflow-hidden bg-slate-950 shrink-0 border border-slate-800">
+                    <div className="w-12 h-10 rounded-lg overflow-hidden bg-[var(--bg-0)] shrink-0 border border-[var(--border-1)]">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={node.thumbnail_url || `/api/projects/${node.image_id}/thumbnail`}
@@ -424,10 +426,10 @@ export const WalkthroughPlanView: React.FC<WalkthroughPlanViewProps> = ({
                       />
                     </div>
                     <div className="truncate">
-                      <h5 className="text-xs font-semibold text-slate-300 truncate">
+                      <h5 className="text-xs font-semibold text-[var(--text-1)] truncate">
                         {node.label}
                       </h5>
-                      <span className="text-[10px] text-slate-500 font-mono">
+                      <span className="text-[10px] text-[var(--text-3)] font-mono">
                         {node.scene_type}
                       </span>
                     </div>
@@ -436,7 +438,7 @@ export const WalkthroughPlanView: React.FC<WalkthroughPlanViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleRestoreScene(sceneId)}
-                    className="p-1.5 text-xs font-medium text-indigo-300 hover:text-white bg-indigo-950/60 hover:bg-indigo-900/80 rounded-lg border border-indigo-500/30 transition-colors flex items-center gap-1 shrink-0"
+                    className="btn-outline-gold p-1.5 text-xs font-medium rounded-lg flex items-center gap-1 shrink-0"
                     title="Restore into active walkthrough order"
                   >
                     <PlusCircle className="w-3.5 h-3.5" />
