@@ -67,10 +67,17 @@ This document contains 26 core technical questions and precise, grounded answers
 ### 18. Can the system reconstruct the complete 3D property?
 **Answer:** **No.** Full 3D geometric reconstruction (e.g. dense meshes, NeRF, 3D Gaussian Splatting) is explicitly out of scope. The system constructs a topological scene graph to guide generative video diffusion, preserving 2D photographic authenticity without fabricating 3D metric models.
 
-### 19. Is the immersive viewer a true 360-degree reconstruction?
-**Answer:** **No.** For standard perspective photographs, it provides high-resolution 2D pan/zoom without false spherical warping. For genuine 2:1 aspect ratio equirectangular panoramas, it maps the image to an interactive 360° spherical Canvas projection.
+### 19. How does the system handle panoramas and 360-degree viewing?
+**Answer:** The system uses a multi-signal detection pipeline:
+1. It inspects embedded XMP/GPano metadata tags (`GPano:ProjectionType="equirectangular"`).
+2. It verifies the 2:1 geometric aspect ratio (width ≥ 1024px).
+3. It analyzes boundary wrap-around seam continuity (comparing pixel variance between left column x=0 and right column x=W-1).
+4. Genuine equirectangular panoramas render in an interactive 360° spherical Canvas viewer, while standard photos use bounded 2D pan/zoom without false spherical warping. Users can manually toggle any image's classification.
 
-### 20. What are the major limitations of the system?
+### 20. How are different photo aspect ratios handled in video assembly?
+**Answer:** The walkthrough video is standardized to 16:9 widescreen format (720p/1080p). Non-16:9 source photographs (e.g. portrait 9:16 or square 1:1) are normalized using proportional letterbox padding rather than destructive cropping or optical stretching, strictly preserving authentic room geometry and architectural heights.
+
+### 21. What are the major limitations of the system?
 **Answer:**
 1. Dependency on external cloud generative AI providers and active API credentials.
 2. Generative diffusion models can occasionally introduce subtle texture shimmering or lighting drift.

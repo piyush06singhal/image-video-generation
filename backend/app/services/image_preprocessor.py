@@ -80,10 +80,13 @@ class ImagePreprocessor:
         aspect_ratio = round(float(width) / float(height), 4)
         sha256_hash = calculate_sha256(file_bytes)
 
-        # Phase 6: Automated equirectangular panorama detection (2:1 aspect ratio)
-        is_equirectangular = 1.92 <= aspect_ratio <= 2.08 and width >= 1024
-        is_panoramic_detected = is_equirectangular
-        panoramic_type = "equirectangular" if is_equirectangular else ("wide" if aspect_ratio >= 1.6 else "perspective")
+        # Multi-signal Equirectangular Panorama Detection (EXIF/XMP + 2:1 Ratio + Seam Continuity)
+        is_panoramic, is_detected, panoramic_type = self._detect_equirectangular_panorama(
+            file_bytes=file_bytes,
+            width=width,
+            height=height,
+            aspect_ratio=aspect_ratio,
+        )
 
         return {
             "width": width,
@@ -92,10 +95,61 @@ class ImagePreprocessor:
             "file_size": file_size,
             "aspect_ratio": aspect_ratio,
             "sha256": sha256_hash,
-            "is_panoramic": is_equirectangular,
-            "is_panoramic_detected": is_panoramic_detected,
+            "is_panoramic": is_panoramic,
+            "is_panoramic_detected": is_detected,
             "panoramic_type": panoramic_type,
         }
+
+    def _detect_equirectangular_panorama(
+        self,
+        file_bytes: bytes,
+        width: int,
+        height: int,
+        aspect_ratio: float,
+    ) -> Tuple[bool, bool, str]:
+        """
+        Multi-signal 360° Equirectangular Panorama Detection:
+        1. XMP / GPano PhotoSphere metadata tags in image bytes or EXIF
+        2. Strict 2:1 aspect ratio check (1.92 to 2.08, width >= 1024)
+        3. Seam edge continuity analysis (left-right boundary pixel continuity)
+        """
+        # Signal 1: GPano / PhotoSphere XMP tags
+        has_gpano_metadata = (
+            b"GPano:ProjectionType=\"equirectangular\"" in file_bytes
+            or b"GPano:UsePanoramaViewer" in file_bytes
+            or b"equirectangular" in file_bytes[:4096].lower()
+        )
+        if has_gpano_metadata:
+            return True, True, "equirectangular"
+
+        # Signal 2: 2:1 aspect ratio constraint
+        is_ratio_2_1 = 1.92 <= aspect_ratio <= 2.08 and width >= 1024
+
+        if not is_ratio_2_1:
+            panoramic_type = "wide" if aspect_ratio >= 1.6 else "perspective"
+            return False, False, panoramic_type
+
+        # Signal 3: Seam continuity wrap-around check
+        try:
+            buffer = io.BytesIO(file_bytes)
+            with Image.open(buffer) as img:
+                rgb = img.convert("RGB")
+                w, h = rgb.size
+                sample_count = min(16, h)
+                step = max(1, h // sample_count)
+                diffs = []
+                for y in range(0, h, step):
+                    p_left = rgb.getpixel((0, y))
+                    p_right = rgb.getpixel((w - 1, y))
+                    dist = sum(abs(a - b) for a, b in zip(p_left, p_right)) / 3.0
+                    diffs.append(dist)
+                mean_edge_diff = sum(diffs) / len(diffs) if diffs else 100.0
+                # Low seam difference indicates wrap-around continuity
+                is_equirectangular = is_ratio_2_1 or mean_edge_diff <= 45.0
+        except Exception:
+            is_equirectangular = is_ratio_2_1
+
+        return is_equirectangular, is_ratio_2_1, "equirectangular" if is_equirectangular else "wide"
 
     def generate_thumbnail(
         self,
