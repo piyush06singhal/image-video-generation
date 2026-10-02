@@ -1,84 +1,115 @@
 # System Architecture: Image-to-Video Walkthrough Generation
 
-## 1. Project Overview
-The **Image-to-Video Walkthrough Generation** system transforms a set of unordered real estate photographs into a coherent, walkthrough-style property video. 
+## 1. Executive Summary & Pipeline Flow
 
-This project is an **academic minor-project implementation** structured across 6 clear phases:
-1. **Phase 1 (Current)**: Image Ingestion, Validation, Metadata Extraction, and Local Storage Foundation.
-2. **Phase 2**: Scene Understanding & Room Classification.
-3. **Phase 3**: Walkthrough Image Ordering & Transition Graph Construction.
-4. **Phase 4**: Image-to-Video Generation & Camera Motion Estimation.
-5. **Phase 5**: Video Assembly, Inter-scene Crossfading, and Audio/Pacing.
-6. **Phase 6**: Quantitative and Qualitative Evaluation.
-
-> **Scope Note:** Full physically accurate 3D reconstruction (e.g. SLAM, dense NeRF, Gaussian Splatting) is explicitly out of scope for this prototype. The system operates via progressive 2D/2.5D visual continuity and generative interpolation.
-
----
-
-## 2. Phase 1 Architecture
+The **Image-to-Video Walkthrough Generation System** converts unordered real estate photographs into a coherent, cinematographic walkthrough video and spatial inspection interface. The system avoids false claims of full 3D reconstruction/SLAM and instead uses deterministic topological scene graphs, conservative camera motion trajectories, AI video diffusion models, and FFmpeg normalization.
 
 ```
-[ Next.js Frontend ] (Port 3000)
+[ Frontend: Next.js 16 + Tailwind CSS ] (Port 3000)
        │
        │ HTTP / JSON / FormData
        ▼
-[ FastAPI Backend ] (Port 8000)
+[ Backend: FastAPI Server ] (Port 8000)
        │
-       ├── Core / Config & Security (Path Traversal, Sanitization, Limits)
-       ├── ImagePreprocessor (Pillow Integrity, Dimension & Format Check, Thumbnails)
-       ├── Duplicate Detection (SHA-256 Checksum)
-       └── StorageService (JSON State & Directory Segregation)
-               │
-               └── backend/storage/projects/<project_id>/
-                       ├── project.json       (Session Metadata)
-                       ├── uploads/           (Untouched Original Photographs)
-                       └── processed/         (Derived Web Thumbnails & Normalized Previews)
+       ├── Project Manager & Storage Service (Isolated filesystem persistence)
+       │
+       ├── 1. Image Ingestion & Preprocessor
+       │      └── Validation (Pillow), EXIF transpose, deduplication (SHA-256), 2:1 panorama detection
+       │
+       ├── 2. Scene Understanding Subsystem (VLM)
+       │      └── Multimodal visual analysis (Gemini 2.5 Flash), room classification, lighting, features
+       │
+       ├── 3. Walkthrough Planner Subsystem
+       │      ├── Scene Graph Builder (Spatial connection heuristics)
+       │      └── Topological Ordering Engine (Exterior → Entrance → Social → Private → Outdoor)
+       │
+       ├── 4. Camera Motion & Transition Planner
+       │      └── Conservative motion trajectories, duration & negative safety prompt synthesis
+       │
+       ├── 5. Image-to-Video Diffusion Engine
+       │      └── Scene-by-scene video generation (Gemini Veo 2.0 / Veo 3.1) & FFprobe validation
+       │
+       ├── 6. FFmpeg Video Assembler Engine
+       │      └── Normalization (uniform H.264 / 24fps), intro title cards, concatenation & crossfades
+       │
+       ├── 7. Immersive Scene Viewer
+       │      └── 360° Equirectangular Canvas projection & High-Resolution 2D pan/zoom
+       │
+       └── 8. Human Evaluation & Quality Reporting
+              └── 6-dimension evaluation rubric, automated checks, and technical text report generator
 ```
+
+---
+
+## 2. Core Subsystems & Responsibilities
+
+### 2.1 Vision-Language Model (VLM - Gemini 2.5 Flash)
+- **Role:** Extracts semantic and physical room characteristics from uploaded photographs.
+- **Outputs:** `scene_type`, `description`, `features`, `lighting`, `visible_connections`, `camera_characteristics`, and `confidence` score.
+- **Constraints:** Never hallucinates unseen rooms (e.g. seeing a doorway does not invent a bedroom behind it).
+
+### 2.2 Walkthrough Planner & Scene Graph
+- **Role:** Constructs a directed scene graph representing property navigation topology.
+- **Sorting Logic:** Applies architectural hierarchy:
+  1. `exterior_front`
+  2. `entrance_foyer`
+  3. `living_room` / `dining_room` / `open_plan`
+  4. `kitchen`
+  5. `hallway_corridor` / `stairs`
+  6. `master_bedroom` / `bedroom`
+  7. `bathroom`
+  8. `balcony_terrace` / `backyard_garden`
+- **Plan Lifecyle:** Supports user reordering, exclusions, manual classifications, and plan versioning.
+
+### 2.3 Camera Motion Planner
+- **Role:** Designs restrained, realistic camera motion trajectories per room type.
+- **Supported Motions:** Slow Forward, Slow Backward, Subtle Dolly, Smooth Pan Left/Right, Gentle Orbit, Static Subtle Motion, Exterior Forward.
+- **Safety Constraints:** Injects negative prompts to prevent morphing, warping, appearing people/text/logos, and architectural hallucinations.
+
+### 2.4 Video Diffusion Engine (Gemini Veo 2.0 / Veo 3.1)
+- **Role:** Generates 4-second video clips for each individual scene using image-to-video diffusion.
+- **Validation:** Every generated clip is verified using FFprobe for valid headers, H.264 video streams, exact duration, and uncorrupted frames.
+
+### 2.5 FFmpeg Video Assembler
+- **Role:** Stitches generated clips into a unified property walkthrough MP4.
+- **Normalization:** Standardizes resolution (720p/1080p), frame rate (24fps), and pixel format (`yuv420p`).
+- **Transitions:** Restrained straight cuts and short crossfades (0.4s).
+- **Outdated Plan Tracking:** Calculates SHA-256 fingerprint of the generation plan. If the plan changes after assembly, the video is marked `is_outdated`.
+
+### 2.6 Immersive Viewer Engine
+- **Role:** Provides interactive inspection of property scenes.
+- **360° Spherical Canvas:** Projects 2:1 aspect ratio equirectangular panoramas with yaw/pitch drag rotation, FOV zooming, auto-turn, and wrap-around seam handling.
+- **High-Res 2D Pan/Zoom:** Bounded hardware-accelerated pan/zoom for standard perspective photos without false spherical distortion.
+
+### 2.7 Evaluation & Technical Quality Module
+- **Role:** Verifies prototype performance and records human reviews.
+- **6 Dimensions:** Visual Quality, Property Consistency, Scene Ordering, Motion Quality, Temporal Stability, Walkthrough Usefulness.
+- **Automated Checks:** Validates completeness of scene analyses, clip generation, video assembly, and plan synchronization.
 
 ---
 
 ## 3. Storage Hierarchy
-Each real estate project is allocated an isolated directory identified by `project_YYYYMMDD_<hash>`:
 
 ```
-backend/storage/projects/project_20261001_8a1f2c/
-├── project.json
-├── uploads/
-│   ├── img_4b9a12_living_room.jpg
-│   └── img_7c3e55_kitchen.jpg
-└── processed/
-    ├── thumb_img_4b9a12.jpg
-    └── thumb_img_7c3e55.jpg
+backend/storage/projects/<project_id>/
+├── project.json              # Project session metadata & image array
+├── uploads/                  # Original uploaded photographs (untouched)
+│   ├── img_01_living_room.jpg
+│   └── img_02_kitchen.jpg
+├── processed/                # Normalized analysis images & web thumbnails
+│   ├── thumb_img_01.jpg
+│   └── norm_img_01.jpg
+├── analysis/                 # Scene analysis results per image
+│   └── scene_analysis.json
+├── plans/                    # Generation plans with version history
+│   └── plan.json
+├── clips/                    # Individual scene video clips
+│   ├── clip_scene_01.mp4
+│   └── clips_metadata.json
+├── final/                    # Assembled walkthrough MP4 & metadata
+│   ├── walkthrough.mp4
+│   └── metadata.json
+└── evaluation/               # Human reviews & evaluation metrics
+    ├── evaluations.json
+    └── scene_reviews.json
 ```
-
-### Storage Invariants:
-- **Original Source Preservation:** Files inside `uploads/` are stored untouched to serve as unmodified inputs for later AI processing.
-- **Derived Separation:** Thumbnails and any normalized assets are stored in `processed/`.
-- **Atomic State Storage:** `project.json` is updated atomically using temporary files and safe atomic rename operations.
-
----
-
-## 4. API Endpoints (Phase 1)
-
-| Endpoint | Method | Description |
-| :--- | :--- | :--- |
-| `/api/health` | `GET` | Health check endpoint returning backend connectivity status. |
-| `/api/projects` | `POST` | Create a new property project session. |
-| `/api/projects` | `GET` | List all existing property projects. |
-| `/api/projects/{project_id}` | `GET` | Retrieve project details, state, and image array. |
-| `/api/projects/{project_id}/images` | `POST` | Upload and validate single or multiple property photographs. |
-| `/api/projects/{project_id}/images` | `GET` | Retrieve list of validated image metadata for a project. |
-| `/api/projects/{project_id}/images/{image_id}` | `DELETE` | Delete an image and remove all associated files from disk. |
-| `/api/projects/{project_id}/images/{image_id}/file` | `GET` | Stream original image file. |
-| `/api/projects/{project_id}/images/{image_id}/thumbnail` | `GET` | Stream derived thumbnail image. |
-
----
-
-## 5. Image Validation & Duplicate Detection Rules
-For each uploaded photograph:
-1. **Size Limits:** File size must be between 1 byte and 20 MB (HTTP 413 on excess).
-2. **Format Verification:** Validated using Pillow byte inspection (JPEG, PNG, WEBP allowed; HTTP 415 on unsupported format).
-3. **Dimensions:** Minimum width and height of 512 × 512 pixels (HTTP 400 on undersized images).
-4. **EXIF Orientation:** EXIF orientation tags are read and transposed so dimension reporting accurately matches visual orientation.
-5. **Duplicate Detection:** SHA-256 hash is computed for file bytes. If the hash matches an existing image in the project, the upload is rejected with code `DUPLICATE_IMAGE` (HTTP 400).
-6. **Path Traversal Prevention:** Client filenames are sanitized, and unique server-generated IDs (`img_xxxxxx`) prefix stored filenames.
