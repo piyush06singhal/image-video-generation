@@ -1,15 +1,10 @@
 from typing import List, Optional
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse, PlainTextResponse
 
 from app.core.errors import (
     AppException,
     DuplicateImageError,
-    ImageCorruptedError,
-    ImageNotFoundError,
-    ImageTooLargeError,
-    ImageTooSmallError,
-    InvalidImageFormatError,
     ProjectNotFoundError,
 )
 from app.schemas.assembly import (
@@ -18,6 +13,15 @@ from app.schemas.assembly import (
     FinalVideoMetadata,
 )
 from app.schemas.common import ApiResponse
+from app.schemas.evaluation import (
+    EvaluationCreate,
+    EvaluationRecord,
+    EvaluationSummary,
+    PanoramaUpdatePayload,
+    SceneReviewCreate,
+    SceneReviewRecord,
+    TechnicalReport,
+)
 from app.schemas.generation import (
     GenerateRequest,
     GenerationJob,
@@ -28,9 +32,9 @@ from app.schemas.image import ImageBatchUploadResult, ImageMetadata
 from app.schemas.plan import GenerationPlan, PlanUpdateRequest
 from app.schemas.project import ProjectCreate, ProjectResponse
 from app.schemas.scene import ProjectAnalysisRequest, SceneCorrectionPayload
+from app.services.evaluation_service import evaluation_service
 from app.services.project_service import project_service
 from app.services.scene_service import scene_service
-from app.services.storage_service import storage_service
 from app.services.video_assembler import video_assembler_service
 from app.services.video_generation import video_generation_service
 from app.services.walkthrough_planner import walkthrough_planner
@@ -437,5 +441,120 @@ async def download_final_video(project_id: str):
     )
 
 
+@router.get("/{project_id}/clips/{scene_id}/download")
+async def download_scene_clip(project_id: str, scene_id: str):
+    """
+    Direct file download attachment for an individual generated scene clip.
+    """
+    clip_path = video_generation_service.get_clip_file_path(project_id, scene_id)
+    download_filename = f"{project_id}_{scene_id}.mp4"
+    return FileResponse(
+        path=str(clip_path),
+        media_type="video/mp4",
+        filename=download_filename,
+        headers={"Content-Disposition": f'attachment; filename="{download_filename}"'},
+    )
 
 
+# ==========================================
+# Phase 6: Panorama & Evaluation Endpoints
+# ==========================================
+
+@router.patch("/{project_id}/images/{image_id}/panorama", response_model=ApiResponse[ImageMetadata])
+async def update_image_panorama_status(
+    project_id: str,
+    image_id: str,
+    payload: PanoramaUpdatePayload,
+):
+    """
+    Manually classifies or toggles whether an image is a 360-degree equirectangular panorama.
+    """
+    updated_image = scene_service.update_image_panorama(
+        project_id=project_id,
+        image_id=image_id,
+        is_panoramic=payload.is_panoramic,
+        panoramic_type=payload.panoramic_type,
+    )
+    return ApiResponse.success_response(updated_image)
+
+
+@router.post("/{project_id}/evaluations", response_model=ApiResponse[EvaluationRecord], status_code=status.HTTP_201_CREATED)
+async def submit_human_evaluation(
+    project_id: str,
+    payload: EvaluationCreate,
+):
+    """
+    Submits a structured human walkthrough evaluation across the 6 core quality dimensions.
+    """
+    record = evaluation_service.submit_evaluation(project_id, payload)
+    return ApiResponse.success_response(record)
+
+
+@router.get("/{project_id}/evaluations", response_model=ApiResponse[EvaluationSummary])
+async def get_project_evaluations(project_id: str):
+    """
+    Retrieves mathematical evaluation summary averages and list of submitted reviews.
+    """
+    summary = evaluation_service.get_evaluation_summary(project_id)
+    return ApiResponse.success_response(summary)
+
+
+@router.post("/{project_id}/scene-reviews", response_model=ApiResponse[SceneReviewRecord])
+async def submit_scene_review_flag(
+    project_id: str,
+    payload: SceneReviewCreate,
+):
+    """
+    Submits or updates a reviewer flag (acceptable, needs_review, failed) for an individual scene.
+    """
+    record = evaluation_service.submit_scene_review(project_id, payload)
+    return ApiResponse.success_response(record)
+
+
+@router.get("/{project_id}/scene-reviews", response_model=ApiResponse[List[SceneReviewRecord]])
+async def get_project_scene_reviews(project_id: str):
+    """
+    Retrieves all per-scene review flags for a project.
+    """
+    reviews = evaluation_service.get_scene_reviews(project_id)
+    return ApiResponse.success_response(reviews)
+
+
+@router.get("/{project_id}/report", response_model=ApiResponse[TechnicalReport])
+async def get_technical_report(project_id: str):
+    """
+    Generates a full technical walkthrough generation report with quantitative metrics and evaluation data.
+    """
+    report = evaluation_service.generate_technical_report(project_id)
+    return ApiResponse.success_response(report)
+
+
+@router.get("/{project_id}/report/text")
+async def get_technical_report_text(project_id: str):
+    """
+    Returns standard formatted plain-text walkthrough generation and evaluation report.
+    """
+    report = evaluation_service.generate_technical_report(project_id)
+    return PlainTextResponse(report.formatted_text_report)
+
+
+@router.delete("/{project_id}", response_model=ApiResponse[dict])
+async def delete_project(
+    project_id: str,
+    confirm: bool = Query(False, description="Must be True to confirm irreversible project deletion"),
+):
+    """
+    Safely and irreversibly removes all stored uploads, clips, plans, and final video files for a project.
+    Requires explicit confirm=true query parameter.
+    """
+    if not confirm:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project deletion requires explicit confirmation (?confirm=true).",
+        )
+    deleted = project_service.delete_project(project_id)
+    if not deleted:
+        raise ProjectNotFoundError(project_id)
+    return ApiResponse.success_response(
+        {"deleted": True, "project_id": project_id, "message": "Project and all associated artifacts deleted safely."}
+    )

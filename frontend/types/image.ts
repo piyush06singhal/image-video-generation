@@ -24,6 +24,11 @@ export interface ImageMetadata {
   quality?: ImageQualityResult | null;
   analysis_error?: string | null;
   analysis_image_url?: string | null;
+
+  // Phase 6: Panorama & Immersive Viewing
+  is_panoramic?: boolean;
+  is_panoramic_detected?: boolean;
+  panoramic_type?: "equirectangular" | "wide" | "perspective" | string;
 }
 
 export interface RejectedImage {

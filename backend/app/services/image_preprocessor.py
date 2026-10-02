@@ -80,6 +80,11 @@ class ImagePreprocessor:
         aspect_ratio = round(float(width) / float(height), 4)
         sha256_hash = calculate_sha256(file_bytes)
 
+        # Phase 6: Automated equirectangular panorama detection (2:1 aspect ratio)
+        is_equirectangular = 1.92 <= aspect_ratio <= 2.08 and width >= 1024
+        is_panoramic_detected = is_equirectangular
+        panoramic_type = "equirectangular" if is_equirectangular else ("wide" if aspect_ratio >= 1.6 else "perspective")
+
         return {
             "width": width,
             "height": height,
@@ -87,6 +92,9 @@ class ImagePreprocessor:
             "file_size": file_size,
             "aspect_ratio": aspect_ratio,
             "sha256": sha256_hash,
+            "is_panoramic": is_equirectangular,
+            "is_panoramic_detected": is_panoramic_detected,
+            "panoramic_type": panoramic_type,
         }
 
     def generate_thumbnail(

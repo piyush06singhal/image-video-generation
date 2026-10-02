@@ -326,6 +326,103 @@ class StorageService:
             except Exception as e:
                 logger.warning(f"Failed to delete thumbnail {thumb_path}: {e}")
 
+    def get_evaluations_json_path(self, project_id: str) -> Path:
+        return self.get_project_dir(project_id) / "evaluations.json"
+
+    def save_evaluations_json(self, project_id: str, data: List[Dict[str, Any]]) -> None:
+        """
+        Atomically saves list of human evaluations into evaluations.json.
+        """
+        json_path = self.get_evaluations_json_path(project_id)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                dir=str(json_path.parent),
+                delete=False,
+                encoding="utf-8",
+            ) as tf:
+                json.dump(data, tf, indent=2, ensure_ascii=False)
+                temp_name = tf.name
+
+            os.replace(temp_name, str(json_path))
+        except Exception as e:
+            logger.error(f"Failed to save evaluations.json for {project_id}: {e}")
+            raise StorageError(f"Failed to persist evaluations for project {project_id}")
+
+    def load_evaluations_json(self, project_id: str) -> List[Dict[str, Any]]:
+        """
+        Loads list of human evaluations from evaluations.json.
+        """
+        json_path = self.get_evaluations_json_path(project_id)
+        if not json_path.is_file():
+            return []
+
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, list) else []
+        except Exception as e:
+            logger.error(f"Failed to read evaluations.json for {project_id}: {e}")
+            raise StorageError(f"Corrupted evaluations data for project {project_id}")
+
+    def get_scene_reviews_json_path(self, project_id: str) -> Path:
+        return self.get_project_dir(project_id) / "scene_reviews.json"
+
+    def save_scene_reviews_json(self, project_id: str, data: List[Dict[str, Any]]) -> None:
+        """
+        Atomically saves scene review records into scene_reviews.json.
+        """
+        json_path = self.get_scene_reviews_json_path(project_id)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                dir=str(json_path.parent),
+                delete=False,
+                encoding="utf-8",
+            ) as tf:
+                json.dump(data, tf, indent=2, ensure_ascii=False)
+                temp_name = tf.name
+
+            os.replace(temp_name, str(json_path))
+        except Exception as e:
+            logger.error(f"Failed to save scene_reviews.json for {project_id}: {e}")
+            raise StorageError(f"Failed to persist scene reviews for project {project_id}")
+
+    def load_scene_reviews_json(self, project_id: str) -> List[Dict[str, Any]]:
+        """
+        Loads scene review records from scene_reviews.json.
+        """
+        json_path = self.get_scene_reviews_json_path(project_id)
+        if not json_path.is_file():
+            return []
+
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, list) else []
+        except Exception as e:
+            logger.error(f"Failed to read scene_reviews.json for {project_id}: {e}")
+            raise StorageError(f"Corrupted scene reviews data for project {project_id}")
+
+    def delete_project(self, project_id: str) -> bool:
+        """
+        Safely deletes all files, directories, and data for a project.
+        """
+        project_dir = self.get_project_dir(project_id)
+        if project_dir.exists() and project_dir.is_dir():
+            try:
+                shutil.rmtree(project_dir)
+                logger.info(f"Cleaned up all storage files for project {project_id}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to delete project directory {project_dir}: {e}")
+                raise StorageError(f"Failed to delete project storage for {project_id}")
+        return False
+
     def list_all_projects(self) -> List[Dict[str, Any]]:
         """
         Returns all projects found in storage.

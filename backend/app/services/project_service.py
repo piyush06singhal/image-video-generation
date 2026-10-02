@@ -156,6 +156,9 @@ class ProjectService:
                     status=ImageStatus.VALIDATED,
                     file_url=file_url,
                     thumbnail_url=thumb_url,
+                    is_panoramic=metadata_dict.get("is_panoramic", False),
+                    is_panoramic_detected=metadata_dict.get("is_panoramic_detected", False),
+                    panoramic_type=metadata_dict.get("panoramic_type", "perspective"),
                 )
 
                 accepted_images.append(img_meta)
@@ -291,6 +294,15 @@ class ProjectService:
                 raise ImageNotFoundError(image_id, project_id)
 
         raise ImageNotFoundError(image_id, project_id)
+
+    def delete_project(self, project_id: str) -> bool:
+        """
+        Safely deletes all files, directories, and database records for a project.
+        """
+        project_data = self.storage.load_project_json(project_id)
+        if not project_data:
+            raise ProjectNotFoundError(project_id)
+        return self.storage.delete_project(project_id)
 
 
 project_service = ProjectService()

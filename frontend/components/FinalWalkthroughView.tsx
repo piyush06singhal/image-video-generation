@@ -3,6 +3,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { AssemblyConfig, AssemblyJob, FinalVideoMetadata } from "@/types/assembly";
+import { ImmersiveSceneViewer } from "@/components/ImmersiveSceneViewer";
+import { EvaluationSection } from "@/components/EvaluationSection";
 import {
   Film,
   Play,
@@ -21,6 +23,8 @@ import {
   Maximize2,
   Settings2,
   Check,
+  Compass,
+  FileText,
 } from "lucide-react";
 
 interface FinalWalkthroughViewProps {
@@ -39,6 +43,9 @@ export function FinalWalkthroughView({
   const [loading, setLoading] = useState(true);
   const [isAssembling, setIsAssembling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // View Mode: Cinematic Walkthrough Video vs Immersive Scene Viewer
+  const [viewMode, setViewMode] = useState<"cinematic" | "immersive">("cinematic");
 
   // Configuration options
   const [showConfig, setShowConfig] = useState(false);
@@ -191,7 +198,7 @@ export function FinalWalkthroughView({
               Clip Studio
             </button>
             <span className="badge badge-gold font-mono font-bold">
-              Phase 05 · Final Walkthrough
+              Phase 06 · Immersive Viewer & Evaluation
             </span>
             {metadata && !metadata.is_outdated && (
               <span className="badge badge-success font-semibold flex items-center gap-1">
@@ -203,7 +210,7 @@ export function FinalWalkthroughView({
             {propertyName}
           </h1>
           <p className="text-sm text-[var(--text-2)] max-w-2xl leading-relaxed">
-            Fully unified, normalized real-estate walkthrough video preserving verified scene sequence and camera trajectory.
+            Experience the generated real estate walkthrough in cinematic playback or interactively inspect scenes in 360° / immersive pan-zoom view.
           </p>
         </div>
 
@@ -392,8 +399,36 @@ export function FinalWalkthroughView({
         </div>
       )}
 
-      {/* ── Final Walkthrough Video Player Experience ── */}
-      {!isAssembling && metadata && (
+      {/* ── Mode Selection Pill Switcher ── */}
+      <div className="flex items-center justify-center">
+        <div className="inline-flex p-1.5 rounded-2xl bg-[var(--bg-1)] border border-[var(--border-2)] shadow-md">
+          <button
+            onClick={() => setViewMode("cinematic")}
+            className={`px-5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              viewMode === "cinematic"
+                ? "bg-[var(--gold-1)] text-white shadow-md"
+                : "text-[var(--text-2)] hover:text-[var(--text-1)]"
+            }`}
+          >
+            <Film className="w-4 h-4" />
+            Cinematic Walkthrough
+          </button>
+          <button
+            onClick={() => setViewMode("immersive")}
+            className={`px-5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              viewMode === "immersive"
+                ? "bg-[var(--gold-1)] text-white shadow-md"
+                : "text-[var(--text-2)] hover:text-[var(--text-1)]"
+            }`}
+          >
+            <Compass className="w-4 h-4" />
+            Immersive Scene Viewer (360° / Pan-Zoom)
+          </button>
+        </div>
+      </div>
+
+      {/* ── View 1: Cinematic Walkthrough Video Experience ── */}
+      {viewMode === "cinematic" && !isAssembling && metadata && (
         <div className="space-y-6">
           <div className="glass-card rounded-3xl overflow-hidden border border-[var(--border-2)] shadow-2xl relative">
             {/* Aspect Ratio Container for Video */}
@@ -449,11 +484,11 @@ export function FinalWalkthroughView({
                       onClick={togglePlay}
                       className="hover:text-[var(--gold-1)] transition-colors"
                     >
-                      {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
+                      {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                     </button>
 
                     <div className="flex items-center gap-2">
-                      <button onClick={toggleMute} className="hover:text-[var(--gold-1)] transition-colors">
+                      <button onClick={toggleMute} className="hover:text-[var(--gold-1)]">
                         {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                       </button>
                       <input
@@ -463,19 +498,16 @@ export function FinalWalkthroughView({
                         step={0.05}
                         value={isMuted ? 0 : volume}
                         onChange={handleVolumeChange}
-                        className="w-16 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer accent-[var(--gold-1)]"
+                        className="w-16 h-1 bg-white/30 rounded accent-[var(--gold-1)] cursor-pointer hidden sm:block"
                       />
                     </div>
 
                     <span className="font-mono text-[11px] text-white/80">
-                      {formatTime(currentTime)} / {formatTime(duration || metadata.duration_seconds)}
+                      {formatTime(currentTime)} / {formatTime(duration)}
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--gold-2)] bg-black/40 px-2.5 py-1 rounded-md border border-white/10">
-                      {metadata.width}×{metadata.height} · {metadata.fps}fps
-                    </span>
+                  <div className="flex items-center gap-4">
                     <button
                       onClick={toggleFullscreen}
                       className="hover:text-[var(--gold-1)] transition-colors p-1"
@@ -545,7 +577,7 @@ export function FinalWalkthroughView({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {metadata.scenes_in_order.map((scene, idx) => (
+              {metadata.scenes_in_order.map((scene) => (
                 <div
                   key={scene.scene_id}
                   className="glass rounded-2xl p-4 border border-[var(--border-1)] flex items-center gap-4 hover:border-[var(--border-2)] transition-colors"
@@ -575,8 +607,8 @@ export function FinalWalkthroughView({
         </div>
       )}
 
-      {/* No Video Assembled Yet Prompt */}
-      {!isAssembling && !metadata && (
+      {/* No Video Assembled Yet Prompt (for Cinematic Mode) */}
+      {viewMode === "cinematic" && !isAssembling && !metadata && (
         <div className="glass-gold rounded-3xl p-16 text-center max-w-xl mx-auto border border-[var(--border-2)] space-y-6">
           <Film className="w-16 h-16 text-[var(--gold-1)] mx-auto" />
           <div className="space-y-2">
@@ -598,6 +630,19 @@ export function FinalWalkthroughView({
           </button>
         </div>
       )}
+
+      {/* ── View 2: Immersive Scene Viewer Experience ── */}
+      {viewMode === "immersive" && (
+        <div className="space-y-6 anim-fade-in">
+          <ImmersiveSceneViewer projectId={projectId} />
+        </div>
+      )}
+
+      {/* ── Bottom Section: Phase 6 Quality Evaluation & Audit ── */}
+      <EvaluationSection
+        projectId={projectId}
+        propertyName={propertyName}
+      />
     </div>
   );
 }

@@ -283,6 +283,110 @@ export const api = {
   getFinalVideoDownloadUrl(projectId: string): string {
     return `${API_BASE_URL}/api/projects/${projectId}/final-video/download`;
   },
+
+  getSceneClipDownloadUrl(projectId: string, sceneId: string): string {
+    return `${API_BASE_URL}/api/projects/${projectId}/clips/${sceneId}/download`;
+  },
+
+  // Phase 6 Endpoints: Immersive Viewing, Panorama Classification & Human Evaluation
+  async updateImagePanorama(
+    projectId: string,
+    imageId: string,
+    isPanoramic: boolean,
+    panoramicType?: string
+  ): Promise<import("@/types/image").ImageMetadata> {
+    return request<import("@/types/image").ImageMetadata>(
+      `/api/projects/${projectId}/images/${imageId}/panorama`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          is_panoramic: isPanoramic,
+          panoramic_type: panoramicType,
+        }),
+      }
+    );
+  },
+
+  async submitEvaluation(
+    projectId: string,
+    payload: import("@/types/evaluation").EvaluationCreate
+  ): Promise<import("@/types/evaluation").EvaluationRecord> {
+    return request<import("@/types/evaluation").EvaluationRecord>(
+      `/api/projects/${projectId}/evaluations`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  async getEvaluations(
+    projectId: string
+  ): Promise<import("@/types/evaluation").EvaluationSummary> {
+    return request<import("@/types/evaluation").EvaluationSummary>(
+      `/api/projects/${projectId}/evaluations`
+    );
+  },
+
+  async submitSceneReview(
+    projectId: string,
+    payload: import("@/types/evaluation").SceneReviewCreate
+  ): Promise<import("@/types/evaluation").SceneReviewRecord> {
+    return request<import("@/types/evaluation").SceneReviewRecord>(
+      `/api/projects/${projectId}/scene-reviews`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  async getSceneReviews(
+    projectId: string
+  ): Promise<import("@/types/evaluation").SceneReviewRecord[]> {
+    return request<import("@/types/evaluation").SceneReviewRecord[]>(
+      `/api/projects/${projectId}/scene-reviews`
+    );
+  },
+
+  async getTechnicalReport(
+    projectId: string
+  ): Promise<import("@/types/evaluation").TechnicalReport> {
+    return request<import("@/types/evaluation").TechnicalReport>(
+      `/api/projects/${projectId}/report`
+    );
+  },
+
+  async getTechnicalReportText(projectId: string): Promise<string> {
+    const url = `${API_BASE_URL}/api/projects/${projectId}/report/text`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error("Failed to fetch text report");
+    }
+    return res.text();
+  },
+
+  async deleteProject(
+    projectId: string,
+    confirm: boolean = true
+  ): Promise<{ deleted: boolean; project_id: string; message: string }> {
+    return request<{ deleted: boolean; project_id: string; message: string }>(
+      `/api/projects/${projectId}?confirm=${confirm}`,
+      {
+        method: "DELETE",
+      }
+    );
+  },
 };
+
 
 

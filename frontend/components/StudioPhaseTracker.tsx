@@ -14,7 +14,7 @@ const PHASES = [
   { id: 2, label: "02", title: "Scene AI", desc: "Gemini scene understanding" },
   { id: 3, label: "03", title: "Plan", desc: "Walkthrough path planning" },
   { id: 4, label: "04", title: "Generate", desc: "Image-to-video clips" },
-  { id: 5, label: "05", title: "Final Video", desc: "Assembly & delivery" },
+  { id: 5, label: "05", title: "Walkthrough & Review", desc: "Assembly, 360° viewer & audit" },
 ];
 
 export const StudioPhaseTracker: React.FC<StudioPhaseTrackerProps> = ({

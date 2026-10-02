@@ -218,6 +218,46 @@ class SceneService:
 
         return ImageMetadata(**target_img)
 
+    def update_image_panorama(
+        self,
+        project_id: str,
+        image_id: str,
+        is_panoramic: bool,
+        panoramic_type: Optional[str] = None,
+    ) -> ImageMetadata:
+        """
+        Manually updates the panoramic classification for a specific property photograph.
+        """
+        project_data = self.storage.load_project_json(project_id)
+        if not project_data:
+            raise ProjectNotFoundError(project_id)
+
+        target_img = None
+        for img in project_data.get("images", []):
+            if img["id"] == image_id:
+                target_img = img
+                break
+
+        if not target_img:
+            raise ImageNotFoundError(image_id, project_id)
+
+        target_img["is_panoramic"] = is_panoramic
+        if panoramic_type:
+            target_img["panoramic_type"] = panoramic_type
+        elif is_panoramic:
+            target_img["panoramic_type"] = "equirectangular"
+        else:
+            target_img["panoramic_type"] = "perspective"
+
+        now_str = datetime.now(timezone.utc).isoformat()
+        project_data["updated_at"] = now_str
+        self.storage.save_project_json(project_id, project_data)
+        logger.info(
+            f"Updated image {image_id} panorama status: is_panoramic={is_panoramic}, type={target_img['panoramic_type']}"
+        )
+
+        return ImageMetadata(**target_img)
+
     def get_analysis_image_path(self, project_id: str, image_id: str) -> Path:
         """
         Locates the normalized analysis-ready image in storage/projects/{project_id}/processed/.

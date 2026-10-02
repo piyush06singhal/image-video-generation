@@ -65,6 +65,17 @@ class ImageMetadata(BaseModel):
         default=None, description="API URL to view normalized analysis-ready image"
     )
 
+    # Phase 6: Panoramic & Immersive Viewing extensions
+    is_panoramic: bool = Field(
+        default=False, description="Whether this image is treated as a 360-degree equirectangular panorama"
+    )
+    is_panoramic_detected: bool = Field(
+        default=False, description="Whether automated aspect ratio analysis detected a likely 2:1 equirectangular panorama"
+    )
+    panoramic_type: Optional[str] = Field(
+        default="perspective", description="Panoramic classification: equirectangular, wide, perspective"
+    )
+
 
 class RejectedImage(BaseModel):
     filename: str
