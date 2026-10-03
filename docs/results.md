@@ -1,76 +1,53 @@
-# Experimental Results & Performance Report
+# Results and Reproducible Evaluation Template
 
-This document records the experimental results and quantitative performance metrics obtained from the complete 6-phase pipeline execution.
+This document defines what should be recorded when evaluating the current checkout. It does not claim that one fixed dataset, runtime, provider response, or human score applies to every run.
 
----
+## 1. What is reproducible locally
 
-## 1. Experimental Dataset Configuration
+Run the backend test suite from the backend directory:
 
-| Parameter | Demonstration Property Dataset |
+```bash
+./venv/bin/pytest tests/ -v
+```
+
+Run frontend checks from the frontend directory:
+
+```bash
+npm run lint
+npm run build
+```
+
+The test count, execution time, generated media, and provider behavior can change as the code and dependencies change. Record the actual command output and date alongside any submitted result.
+
+## 2. Suggested end-to-end record
+
+For a demonstration dataset, record:
+
+| Item | Value to record |
 |---|---|
-| **Property Name** | Modern Architectural Residence |
-| **Number of Source Images** | 6 Photographs |
-| **Represented Scenes** | Exterior Front, Entrance Foyer, Open Living Room, Gourmet Kitchen, Master Suite, Bathroom |
-| **Image Resolution Range** | 1920×1080 to 2560×1440 px |
-| **Image Formats Tested** | JPEG, PNG |
-| **Total Ingested Data Size** | ~14.2 MB |
+| Number of uploaded images | Actual count |
+| Image formats and dimensions | Actual values |
+| Number of analyzed scenes | Actual completed/total count |
+| Number of generated clips | Actual completed/total count |
+| Provider model | Configured `AI_MODEL` and `VIDEO_MODEL` |
+| Quota pauses or retries | Actual job statuses and retry counts |
+| Assembly output | Actual duration, resolution, frame rate, and file size |
+| Evaluation scores | Reviewer name, rubric scores, and review date |
 
----
+## 3. Output characteristics implemented by default
 
-## 2. Pipeline Execution Metrics
+- Image uploads are limited by configuration; the default maximum is 20 images per project and 20 MB per image.
+- Video generation requests are limited to 5 selected scenes by default.
+- Remote Veo generation targets 4-second clips, one active submission at a time, with configurable pacing and retry settings.
+- The assembler currently targets 1280×720 at 24fps and uses H.264 output when FFmpeg succeeds.
+- The local slideshow fallback creates a non-generative MP4 and should be reported separately from Veo-generated output.
 
-| Pipeline Stage | Processing Engine | Execution Time | Output Artifacts | Status |
-|---|---|---|---|---|
-| **Phase 1: Ingestion & Validation** | Pillow / SHA-256 | ~0.4s | 6 pristine originals, 6 web thumbnails, metadata index | **PASS** |
-| **Phase 2: Scene Understanding** | Gemini 2.5 Flash Vision | ~4.8s total (0.8s/img) | 6 structured room analyses (lighting, features, connections) | **PASS** |
-| **Phase 3: Walkthrough Planning** | Graph Ordering & Camera Planner | ~0.08s | Directed topological plan (v1), 6 camera prompts | **PASS** |
-| **Phase 4: Video Clip Generation** | Gemini Veo 3.1 | ~35s per clip | 6 individual 4-second MP4 scene clips (24fps, H.264) | **PASS** |
-| **Phase 5: Video Assembly** | FFmpeg Normalization Engine | ~1.8s | `walkthrough.mp4` (24.0s total duration, 720p/1080p, H.264) | **PASS** |
-| **Phase 6: Quality Evaluation** | Automated Checker & Human Form | ~0.15s | Summary metrics, per-scene flags, downloadable `.txt` report | **PASS** |
+These are configuration defaults and implementation targets, not guarantees about provider latency or perceptual quality.
 
----
+## 4. Human evaluation
 
-## 3. Assembled Walkthrough Video Specifications
+Use the six rubric dimensions in [`evaluation.md`](evaluation.md). Report the number of reviewers, the input dataset, the score distribution, and the date. Do not present a single aggregate score as a general property of the system unless it was measured on a documented dataset.
 
-```json
-{
-  "duration_seconds": 24.0,
-  "width": 1280,
-  "height": 720,
-  "fps": 24.0,
-  "video_codec": "h264",
-  "format": "mp4",
-  "scene_count": 6,
-  "intro_title_enabled": true,
-  "audio_enabled": false,
-  "integrity_verified": true,
-  "is_outdated": false
-}
-```
+## 5. Interpretation
 
----
-
-## 4. Multi-Axis Evaluation Results (Demonstration Sample)
-
-| Evaluation Dimension | Mean Score (1.0–5.0 Scale) | Target Benchmark | Outcome |
-|---|---|---|---|
-| **Visual Quality & Realism** | **4.3 / 5.0** | ≥ 4.0 | Benchmark Met |
-| **Property Consistency** | **4.5 / 5.0** | ≥ 4.0 | Benchmark Met |
-| **Scene Ordering & Flow** | **4.8 / 5.0** | ≥ 4.5 | Benchmark Met |
-| **Motion Naturalness** | **4.2 / 5.0** | ≥ 4.0 | Benchmark Met |
-| **Temporal Stability** | **3.9 / 5.0** | ≥ 3.5 | Benchmark Met |
-| **Walkthrough Practical Usefulness** | **4.6 / 5.0** | ≥ 4.0 | Benchmark Met |
-| **Overall Aggregate Score** | **4.38 / 5.0** | ≥ 4.0 | Benchmark Met |
-
----
-
-## 5. Automated System Verification Audit
-
-```
-[✓] All source scenes analyzed by Vision Model (6 / 6)
-[✓] All individual scene video clips generated (6 / 6)
-[✓] Video assembly verified on disk (storage/projects/<id>/final/walkthrough.mp4)
-[✓] Elementary video stream integrity verified via FFprobe
-[✓] Video assembly is in sync with latest Generation Plan (Plan v1)
-[✓] Zero corrupted frames or invalid headers detected
-```
+The project demonstrates an end-to-end academic workflow: validated image ingestion, model-assisted scene analysis, deterministic ordering, optional Veo generation, local fallback generation, assembly, and review reporting. It is not evidence of production-scale throughput, guaranteed geometric fidelity, or unlimited free-tier availability.

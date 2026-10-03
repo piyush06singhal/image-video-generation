@@ -20,13 +20,13 @@ The system establishes a 6-dimension evaluation framework for real estate walkth
 The backend automatically executes non-subjective technical verification checks:
 
 1. **Scene Analysis Completeness (`all_scenes_analyzed`):**
-   - Verifies whether 100% of uploaded property photographs have completed multimodal visual classification.
+   - Reports whether all uploaded property photographs have completed multimodal visual classification for the current project.
 2. **Clip Generation Completeness (`all_clips_generated`):**
    - Verifies that an approved video clip exists for every planned scene in the sequence. Reports missing scenes if any.
 3. **Walkthrough Assembly Validation (`video_assembled`):**
    - Confirms the final concatenated MP4 video file exists on disk.
 4. **Stream & Codec Integrity (`has_corrupted_output`):**
-   - Probes the final video container and elementary video stream with FFprobe to guarantee valid headers, standard H.264 profile, and uncorrupted frames.
+   - Probes the final video container and decodes an initial frame to check that the generated file is readable and has expected metadata. This is a validation check, not a guarantee of perceptual quality.
 5. **Plan Synchronization Status (`is_outdated_relative_to_plan`):**
    - Verifies if the assembled video matches the SHA-256 fingerprint of the latest saved generation plan.
 

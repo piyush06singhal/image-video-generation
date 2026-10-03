@@ -1,6 +1,6 @@
 # Comprehensive End-to-End Live Demonstration Workflow
 
-This guide details the exact 17-step demonstration workflow to follow during the minor project presentation, faculty viva, and live technical defense.
+This guide provides a suggested demonstration workflow for the minor project presentation, faculty viva, and live technical defense. Exact labels and results may vary with the current checkout, input images, API availability, and provider quota.
 
 ---
 
@@ -40,7 +40,7 @@ cd backend
 source venv/bin/activate
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
-*Verify:* Navigate to `http://localhost:8000/api/health` → `{"status": "healthy"}`.
+*Verify:* Navigate to `http://localhost:8000/api/health` and confirm the response contains `data.status: "healthy"` and `data.service: "walkthrough-backend"`.
 
 ### Step C: Launch Frontend Client
 ```bash
@@ -111,14 +111,14 @@ npm run dev
 
 ### Step 12 — Show Generated Scene Clips
 - Inspect individual generated scene clips in the browser player.
-- Point out that every clip is validated via FFprobe (24fps, H.264 codec, duration: 4.0s).
+- Point out that every clip is probed and decoded before assembly. The configured target is 24fps/H.264 and the provider target is 4 seconds, but measured metadata can differ and should be read from the job result.
 - If Veo is unavailable, click **"Use Image Slideshow"** to create a local, aspect-ratio-preserving MP4 without an API call.
 
 ### Step 13 — Assemble Final Walkthrough
 - Advance to Phase 5 **"Walkthrough & Review"**.
 - Enable or disable the Title Card intro option (1.5s).
 - Click **"Assemble Walkthrough Video"**.
-- Explain that FFmpeg normalizes all clips to uniform 16:9 widescreen and applies restrained straight cuts or short 0.4s crossfades.
+- Explain that FFmpeg normalizes all clips to 1280×720/24fps and applies restrained straight cuts or short crossfades (default 0.35s).
 
 ### Step 14 — Play Final Walkthrough
 - Play the assembled walkthrough in the custom HTML5 video player.
@@ -138,5 +138,5 @@ npm run dev
 
 ### Step 17 — Show Final Evaluation Report
 - Click **"Technical Report"** button.
-- Review automated system verification checks (`PASS` on all checks: scene analysis, clip generation, video assembly, elementary stream integrity).
+- Review the automated system verification checks and explain any failed or incomplete check rather than assuming every check will pass.
 - Click **"Download .txt"** to export the standardized technical audit report.

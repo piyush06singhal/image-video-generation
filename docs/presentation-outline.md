@@ -29,7 +29,7 @@ This outline structures the academic defense and minor project viva presentation
 
 ### Slide 5: Existing Approaches vs. Proposed System
 - **Existing Approaches:** Manual slideshows (static panning), 3D NeRF / Gaussian Splatting (computationally heavy, requires hundreds of densely overlapping multi-view photos).
-- **Proposed Solution:** Generative image-to-video diffusion guided by structured topological scene graphs from sparse (5–10) photos.
+- **Proposed Solution:** Generative image-to-video diffusion guided by structured topological scene graphs from a configurable set of property photos.
 
 ### Slide 6: System Architecture & Subsystem Flow
 - High-level block diagram: Next.js Client → FastAPI Server → Preprocessor → VLM → Topological Planner → Diffusion Engine → FFmpeg Assembler → Immersive Viewer & Evaluator.
@@ -55,12 +55,12 @@ This outline structures the academic defense and minor project viva presentation
 
 ### Slide 11: Phase 4 — Generative Image-to-Video Diffusion
 - Gemini Veo 3.1 video generation per scene.
-- Automated FFprobe stream validation (duration, 24fps, H.264 codec, elementary stream headers).
+- Automated video probing and decode checks for readable clips and expected metadata.
 - Asynchronous polling and individual scene retry queues.
 
 ### Slide 12: Phase 5 — Deterministic Video Assembly (FFmpeg)
 - Normalization to uniform 16:9 widescreen with letterboxing.
-- Direct cuts and brief 0.4s crossfades (no flashy unrealistic wipes).
+- Direct cuts and brief crossfades (default 0.35s; no flashy wipes).
 - Title card generation and plan change invalidation tracking (`is_outdated`).
 
 ### Slide 13: Phase 6 — Immersive 360° / High-Res Spatial Viewer
@@ -73,10 +73,9 @@ This outline structures the academic defense and minor project viva presentation
 - Automated non-subjective pipeline verification checks.
 - Per-scene defect tagging and exportable technical audit report (`.txt`).
 
-### Slide 15: Experimental Results & Demonstration Metrics
-- Execution time benchmarks across pipeline stages (~35s per clip diffusion, ~1.8s FFmpeg assembly).
-- Video output specifications: 24.0s duration, 24fps, H.264 MP4.
-- Target evaluation benchmarks met (Overall Score: 4.38 / 5.0).
+### Slide 15: Results & Demonstration Metrics
+- Present measurements recorded from the documented dataset and run; do not reuse timings or scores from another run.
+- Report actual video duration, resolution, frame rate, codec, quota pauses, and reviewer scores.
 
 ### Slide 16: Academic Scope & Future Upgrades
 - No metric 3D mesh or SLAM reconstruction; purely topological ordering and generative diffusion.

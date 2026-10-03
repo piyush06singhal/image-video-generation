@@ -14,7 +14,7 @@ The **Image-to-Video Walkthrough Generation System** converts unordered real est
        ├── Project Manager & Storage Service (Isolated filesystem persistence)
        │
        ├── 1. Image Ingestion & Preprocessor
-       │      └── Validation (Pillow), EXIF transpose, deduplication (SHA-256), 2:1 panorama detection
+       │      └── Validation (Pillow), EXIF transpose, deduplication (SHA-256), heuristic panorama detection
        │
        ├── 2. Scene Understanding Subsystem (VLM)
        │      └── Multimodal visual analysis (Gemini 2.5 Flash), room classification, lighting, features
@@ -51,7 +51,7 @@ The **Image-to-Video Walkthrough Generation System** converts unordered real est
 ### 2.1 Vision-Language Model (VLM - Gemini 2.5 Flash)
 - **Role:** Extracts semantic and physical room characteristics from uploaded photographs.
 - **Outputs:** `scene_type`, `description`, `features`, `lighting`, `visible_connections`, `camera_characteristics`, and `confidence` score.
-- **Constraints:** Never hallucinates unseen rooms (e.g. seeing a doorway does not invent a bedroom behind it).
+- **Constraints:** The analysis prompt asks the provider to describe only visible evidence and use `unknown` when evidence is insufficient. Provider output still requires application validation and human review.
 
 ### 2.2 Walkthrough Planner & Scene Graph
 - **Role:** Constructs a directed scene graph representing property navigation topology.
@@ -73,7 +73,7 @@ The **Image-to-Video Walkthrough Generation System** converts unordered real est
 
 ### 2.4 Video Diffusion Engine (Gemini Veo 3.1)
 - **Role:** Generates 4-second video clips for each individual scene using image-to-video diffusion.
-- **Validation:** Every generated clip is verified using FFprobe for valid headers, H.264 video streams, exact duration, and uncorrupted frames.
+- **Validation:** Every generated clip is probed and decoded before assembly to check that it is readable and has expected video metadata. This does not guarantee perceptual quality.
 - **Free-tier controls:** One remote submission is active at a time by default. Submissions are paced, transient 429 responses use bounded exponential backoff, and quota failures are marked paused.
 - **Recovery:** Queued and interrupted jobs are persisted in project generation metadata and re-queued during application startup.
 
@@ -84,8 +84,8 @@ The **Image-to-Video Walkthrough Generation System** converts unordered real est
 
 ### 2.6 FFmpeg Video Assembler
 - **Role:** Stitches generated clips into a unified property walkthrough MP4.
-- **Normalization:** Standardizes resolution (720p/1080p), frame rate (24fps), and pixel format (`yuv420p`).
-- **Transitions:** Restrained straight cuts and short crossfades (0.4s).
+- **Normalization:** Standardizes resolution to 1280×720, frame rate to 24fps, and pixel format (`yuv420p`).
+- **Transitions:** Restrained straight cuts and short crossfades (default 0.35s).
 - **Outdated Plan Tracking:** Calculates SHA-256 fingerprint of the generation plan. If the plan changes after assembly, the video is marked `is_outdated`.
 
 ### 2.7 Immersive Viewer Engine

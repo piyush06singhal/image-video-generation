@@ -4,7 +4,7 @@
 [![Frontend](https://img.shields.io/badge/Frontend-Next.js_16_(React_19)-000000.svg?style=flat-square&logo=next.js)](https://nextjs.org)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg?style=flat-square&logo=python)](https://python.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0%2B-3178C6.svg?style=flat-square&logo=typescript)](https://www.typescriptlang.org)
-[![Test Suite](https://img.shields.io/badge/Tests-56%20Passed%20(100%25)-22c55e.svg?style=flat-square)]()
+[![Test Suite](https://img.shields.io/badge/Tests-run%20locally%20with%20pytest-22c55e.svg?style=flat-square)]()
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 
 An end-to-end, multi-stage generative pipeline and interactive inspection platform that transforms unordered collections of 2D real estate photographs into coherent, architecturally ordered, cinematographic video walkthroughs and immersive spatial viewing experiences.
@@ -16,11 +16,11 @@ An end-to-end, multi-stage generative pipeline and interactive inspection platfo
 Traditional real estate listings rely on disconnected photo galleries that require buyers to mentally reconstruct spatial layouts, or expensive 3D Matterport/LIDAR hardware requiring hundreds of multi-view captures. 
 
 **CinéEstate** bridges this gap using an academic vision-language and video diffusion architecture:
-1. **Automated Structural & Semantic Ingestion:** Ingests sparse, unordered photographs (5–15 images), performs byte-level integrity checks, SHA-256 deduplication, and multi-signal 360° panorama detection.
+1. **Automated Structural & Semantic Ingestion:** Ingests unordered photographs within configurable project limits, performs byte-level integrity checks, SHA-256 deduplication, and panorama detection signals.
 2. **Multimodal Scene Understanding (VLM):** Uses Google Gemini 2.5 Flash to classify architectural room types, evaluate lighting, detect door connections, and quantify image quality.
-3. **Topological Scene Graph Planning:** Constructs a directed graph and executes topological sorting to guarantee natural walkthrough flow (`Exterior` → `Foyer` → `Living` → `Kitchen` → `Private Quarters` → `Outdoor`) with zero room hallucination.
+3. **Topological Scene Graph Planning:** Constructs a directed graph and applies deterministic ordering heuristics to suggest a natural walkthrough flow (`Exterior` → `Foyer` → `Living` → `Kitchen` → `Private Quarters` → `Outdoor`). The planner does not create source images for missing rooms.
 4. **Diffusion-Based Motion Synthesis:** Translates planned camera trajectories (e.g. slow forward dollies, kitchen pans) into photorealistic 4-second video clips via Gemini Veo with direct preservation and anti-distortion constraints. The current Veo 3.1 integration does not send a separate negative-prompt field.
-5. **Deterministic Video Normalization & Assembly:** Standardizes elementary streams with FFmpeg via proportional geometric letterbox padding (preventing room stretching) and seamless crossfading.
+5. **Deterministic Video Normalization & Assembly:** Standardizes video streams with FFmpeg using proportional letterbox padding and configurable cuts or short crossfades.
 6. **Dual-Inspection & Quantitative Evaluation:** Delivers an interactive 360° equirectangular canvas / 2D pan-zoom inspector, an automated 4-point verification engine, and a 6-axis human evaluation audit system.
 
 ---
@@ -53,7 +53,7 @@ The following diagram details the end-to-end pipeline architecture, data contrac
 │   │ • Gemini Veo 3.1 I2V Engine       │◀──────────────│ • Directed Topological Scene Graph Construction            │   │
 │   │ • Prompt grounding & safety locks │ Camera Prompts│ • Hierarchy Sorting (Exterior ➔ Living ➔ Private ➔ Outdoor)│   │
 │   │ • Asynchronous execution queue    │  & Parameters │ • Conservative Camera Motion Planner (Pan/Dolly/Drift)     │   │
-│   │ • FFprobe elementary verification │               │ • Plan Fingerprinting & SHA-256 Versioning                 │   │
+│   │ • Video stream probing/verification│               │ • Plan Fingerprinting & SHA-256 Versioning                 │   │
 │   └─────────────────┬─────────────────┘               └────────────────────────────────────────────────────────────┘   │
 │                     │ Per-Scene                                                                                        │
 │                     │ MP4 Clips                                                                                        │
@@ -91,14 +91,14 @@ The following diagram details the end-to-end pipeline architecture, data contrac
 - **Mathematical Image Quality Estimation:** Computes grayscale mean luminance (brightness), luminance standard deviation (contrast), and Laplacian/FIND_EDGES variance (sharpness).
 
 ### Phase 3: Walkthrough Planning & Scene Graph Construction
-- **Topological Sorting:** Builds a directed adjacency graph to eliminate spatial disorientation, enforcing an architectural sequence from public entryways to private quarters.
-- **Zero Spatial Hallucination:** Intermediate rooms omitted by the user are **never** synthetically fabricated; transitions between sparse rooms are handled via direct cuts.
+- **Topological Sorting:** Builds a directed adjacency graph and applies an architectural ordering heuristic from public entryways to private quarters.
+- **Conservative spatial scope:** Intermediate rooms omitted by the user are not added as separate planned scenes; transitions between available scenes use the configured transition.
 - **Conservative Camera Motion Selection:** Maps scene types to restrained camera trajectories (e.g. forward dolly for foyers, lateral pans for kitchens, subtle static drift for bathrooms) while using direct preservation and anti-distortion constraints in the Veo prompt. The current Veo 3.1 integration does not send a separate negative-prompt field.
 
 ### Phase 4: Image-to-Video Diffusion Generation
 - **Generative Video Synthesis:** Uses Google Gemini Veo 3.1 to synthesize 4-second video clips from single static photographs guided by the scripted motion prompts and direct preservation constraints.
 - **Safety Prompt Engineering:** Uses direct preservation and anti-distortion instructions (`preserve furniture, walls, lighting, and geometry; no distortion`) to reduce structural artifacts. The current Veo 3.1 integration does not send a separate negative-prompt field.
-- **Elementary Stream Verification:** Executes FFprobe checks on every generated clip to confirm valid codec headers (`h264`), resolution, and frame counts before assembly.
+- **Video Stream Verification:** Probes and decodes each generated clip before assembly to confirm it is readable and has expected metadata such as codec, resolution, and frame rate.
 
 ### Phase 5: Video Normalization & Multi-Clip Assembly
 - **Proportional Geometric Letterboxing:** Normalizes source photos of arbitrary aspect ratios ($9:16$ portrait, $1:1$ square, $4:3$) to standardized $16:9$ widescreen ($1280\times 720$ at $24.0\text{ fps}$) without optical stretching or cropping.
@@ -119,8 +119,8 @@ To maintain scientific integrity and realistic evaluation bounds, CinéEstate op
 
 | Principle | Architectural Decision & Defense |
 | :--- | :--- |
-| **Topological Graph vs. 3D Reconstruction** | Constructs a topological scene graph rather than attempting dense Structure-from-Motion (SfM), NeRF, or 3D Gaussian Splatting (3DGS). This enables high-quality synthesis from sparse photos (5–10) without requiring 100+ dense multi-view captures. |
-| **Zero Spatial Hallucination** | The system never invents unseen intermediate hallways, elevators, or staircases. Unphotographed rooms are omitted, preserving absolute photographic authenticity. |
+| **Topological Graph vs. 3D Reconstruction** | Constructs a topological scene graph rather than attempting dense Structure-from-Motion (SfM), NeRF, or 3D Gaussian Splatting (3DGS). This avoids metric reconstruction, but output quality still depends on the number, coverage, and quality of uploaded photographs. |
+| **Conservative spatial scope** | The system plans and renders uploaded scenes only. It does not generate separate clips for unphotographed intermediate rooms; provider-generated motion can still contain visual artifacts. |
 | **Authentic Aspect Ratio Preservation** | Non-16:9 photographs are letterboxed rather than cropped to fill, preserving authentic ceiling heights, floor layouts, and vertical wall geometry. |
 | **Equirectangular Projection Boundaries** | True 360° equirectangular panoramas are projected onto a spherical canvas; standard perspective photos remain in 2D to prevent false spherical warping. |
 
@@ -135,9 +135,9 @@ The platform integrates a standardized evaluation rubric and objective verificat
 │                                 Evaluation Framework                                   │
 ├──────────────────────────────────────────┬─────────────────────────────────────────────┤
 │ 1. Automated Pipeline Verification       │ 2. 6-Axis Human Evaluation Rubric (1.0-5.0) │
-│ • Scene Analysis Coverage (100%)         │ • Visual Quality & Realism (Target: ≥ 4.0)  │
-│ • Elementary Clip Availability (100%)    │ • Property Consistency (Target: ≥ 4.0)      │
-│ • FFprobe Stream & Codec Integrity       │ • Scene Sequence & Flow (Target: ≥ 4.5)     │
+│ • Scene Analysis Coverage (reported)     │ • Visual Quality & Realism (target: ≥ 4.0)  │
+│ • Elementary Clip Availability (reported)│ • Property Consistency (target: ≥ 4.0)      │
+│ • Video Stream Readability                │ • Scene Sequence & Flow (target: ≥ 4.5)     │
 │ • Plan Fingerprint Synchronization       │ • Motion Naturalness (Target: ≥ 4.0)        │
 │                                          │ • Temporal Stability (Target: ≥ 3.5)        │
 │                                          │ • Walkthrough Usefulness (Target: ≥ 4.0)    │
@@ -186,9 +186,9 @@ The platform integrates a standardized evaluation rubric and objective verificat
 ├── docs/                              # Comprehensive Technical Documentation
 │   ├── architecture.md                # In-depth subsystem architecture & data flows
 │   ├── api.md                         # Complete REST API endpoint reference
-│   ├── viva.md                        # 26 Core Viva questions & technical answers
+│   ├── viva.md                        # Viva questions & technical answers
 │   ├── future-upgrades.md             # Future upgrades and academic scope boundaries
-│   ├── final-demo.md                  # 17-step end-to-end live demonstration guide
+│   ├── final-demo.md                  # End-to-end live demonstration guide
 │   ├── evaluation.md                  # Metric definitions & evaluation guidelines
 │   ├── results.md                     # Experimental benchmarks & evaluation template
 │   ├── screenshots.md                 # 13 ordered UI capture checklist
@@ -305,11 +305,11 @@ For exhaustive technical reference and evaluation preparation, consult the `/doc
 | :--- | :--- |
 | [`docs/architecture.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/architecture.md) | Deep architectural specifications, module responsibilities, and data models. |
 | [`docs/api.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/api.md) | Complete REST API endpoint reference with request/response payloads. |
-| [`docs/viva.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/viva.md) | 26 Core Viva & Technical Defense questions with grounded answers. |
+| [`docs/viva.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/viva.md) | Viva and technical-defense questions with implementation-grounded answers. |
 | [`docs/future-upgrades.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/future-upgrades.md) | Future upgrades, academic boundaries, scope constraints, and explicit non-goals. |
-| [`docs/final-demo.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/final-demo.md) | 17-step end-to-end live demonstration and evaluation script. |
+| [`docs/final-demo.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/final-demo.md) | End-to-end live demonstration and evaluation script. |
 | [`docs/evaluation.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/evaluation.md) | Evaluation metric formulas, automated verification rules, and rubric scoring. |
-| [`docs/results.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/results.md) | Experimental test properties, performance benchmarks, and evaluation templates. |
+| [`docs/results.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/results.md) | Reproducible test commands, result-recording template, and evaluation guidance. |
 | [`docs/screenshots.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/screenshots.md) | 13 ordered screenshot captures for documentation and report inclusion. |
 | [`docs/presentation-outline.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/presentation-outline.md) | 18-slide academic presentation structure with talking points. |
 

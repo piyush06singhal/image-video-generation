@@ -6,7 +6,7 @@ All endpoints are served from the FastAPI backend prefix `/api`. Responses adher
   "success": true,
   "data": { ... },
   "error": null,
-  "timestamp": "2026-10-02T11:20:00Z"
+  "timestamp": "<server-generated ISO-8601 timestamp>"
 }
 ```
 
@@ -16,7 +16,7 @@ All endpoints are served from the FastAPI backend prefix `/api`. Responses adher
 
 ### `GET /api/health`
 Checks server and subsystem health.
-- **Response:** `{"status": "healthy", "version": "0.6.0"}`
+- **Response data:** `{"status": "healthy", "service": "walkthrough-backend"}`
 
 ### `POST /api/projects`
 Creates a new property session.

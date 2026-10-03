@@ -1,6 +1,6 @@
 # Recommended Screenshot Capture Checklist
 
-This document details the 13 essential screenshots to capture for the project report, viva slide deck, and minor project demonstration.
+This document provides a suggested screenshot checklist for the project report, viva slide deck, and minor project demonstration.
 
 ---
 
@@ -54,4 +54,4 @@ This document details the 13 essential screenshots to capture for the project re
 
 ### Screenshot 13: Technical Quality Report & Evaluation Modal
 - **URL / View:** `http://localhost:3000/studio` (Phase 5 / 6)
-- **Key UI Elements to Show:** 6-dimension evaluation score summary bars (Visual Quality, Consistency, Ordering, Motion, Stability, Usefulness), per-scene defect tags, automated checks (PASS), and the formatted plain-text report export.
+- **Key UI Elements to Show:** 6-dimension evaluation score summary bars (Visual Quality, Consistency, Ordering, Motion, Stability, Usefulness), per-scene defect tags, the current automated-check results, and the formatted plain-text report export.

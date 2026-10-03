@@ -52,17 +52,17 @@ This document contains 26 core technical questions and precise, grounded answers
 
 ### 15. How does the system maintain visual consistency?
 **Answer:**
-1. Negative prompt injection (`no morphing, no disappearing furniture, no warping architecture, static lighting`).
+1. Direct prompt constraints describing preservation of visible furniture, geometry, lighting, and restrained motion. The current Veo 3.1 integration does not send a separate negative-prompt field.
 2. Conservative camera trajectories that avoid rapid perspective shifts.
-3. Strict letterboxing during normalization so authentic room proportions are never stretched.
+3. Proportional letterboxing during normalization to avoid intentional geometric stretching.
 
 ### 16. What happens if the AI model fails or returns malformed output?
-**Answer:** The backend catches validation errors and falls back gracefully:
+**Answer:** The backend validates provider and application responses and reports errors through the job state:
 - In Scene Understanding: Malformed JSON falls back to a safe default classification (`unknown`) with diagnostic warnings, and the user can manually correct it via the UI.
 - In Video Generation: Request timeouts or transient API errors are captured, logged, and placed in the persisted generation workflow; provider quota errors pause the job rather than retrying indefinitely.
 
 ### 17. What happens if one video clip fails to generate?
-**Answer:** The assembly engine performs pre-flight verification via FFprobe. If any planned scene clip is missing or corrupted, assembly halts with a clear diagnostic message (e.g. *"Walkthrough cannot be assembled because Kitchen clip is missing"*), preventing corrupt final video exports.
+**Answer:** The assembly engine performs pre-flight file and video-readability checks. If a planned scene clip is missing or unreadable, assembly reports an error instead of producing the final output.
 
 ### 18. Can the system reconstruct the complete 3D property?
 **Answer:** **No.** Full 3D geometric reconstruction (e.g. dense meshes, NeRF, 3D Gaussian Splatting) is explicitly out of scope. The system constructs a topological scene graph to guide generative video diffusion, preserving 2D photographic authenticity without fabricating 3D metric models.
@@ -75,7 +75,7 @@ This document contains 26 core technical questions and precise, grounded answers
 4. Genuine equirectangular panoramas render in an interactive 360° spherical Canvas viewer, while standard photos use bounded 2D pan/zoom without false spherical warping. Users can manually toggle any image's classification.
 
 ### 20. How are different photo aspect ratios handled in video assembly?
-**Answer:** The walkthrough video is standardized to 16:9 widescreen format (720p/1080p). Non-16:9 source photographs (e.g. portrait 9:16 or square 1:1) are normalized using proportional letterbox padding rather than destructive cropping or optical stretching, strictly preserving authentic room geometry and architectural heights.
+**Answer:** The current assembler targets 1280×720 at 24fps. Non-16:9 source content is scaled with proportional letterbox padding rather than intentional stretching; this does not remove artifacts introduced by the generative provider.
 
 ### 21. What future upgrades remain?
 **Answer:**
