@@ -4,7 +4,7 @@
 [![Frontend](https://img.shields.io/badge/Frontend-Next.js_16_(React_19)-000000.svg?style=flat-square&logo=next.js)](https://nextjs.org)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg?style=flat-square&logo=python)](https://python.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0%2B-3178C6.svg?style=flat-square&logo=typescript)](https://www.typescriptlang.org)
-[![Test Suite](https://img.shields.io/badge/Tests-51%20Passed%20(100%25)-22c55e.svg?style=flat-square)]()
+[![Test Suite](https://img.shields.io/badge/Tests-56%20Passed%20(100%25)-22c55e.svg?style=flat-square)]()
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 
 An end-to-end, multi-stage generative pipeline and interactive inspection platform that transforms unordered collections of 2D real estate photographs into coherent, architecturally ordered, cinematographic video walkthroughs and immersive spatial viewing experiences.
@@ -19,7 +19,7 @@ Traditional real estate listings rely on disconnected photo galleries that requi
 1. **Automated Structural & Semantic Ingestion:** Ingests sparse, unordered photographs (5–15 images), performs byte-level integrity checks, SHA-256 deduplication, and multi-signal 360° panorama detection.
 2. **Multimodal Scene Understanding (VLM):** Uses Google Gemini 2.5 Flash to classify architectural room types, evaluate lighting, detect door connections, and quantify image quality.
 3. **Topological Scene Graph Planning:** Constructs a directed graph and executes topological sorting to guarantee natural walkthrough flow (`Exterior` → `Foyer` → `Living` → `Kitchen` → `Private Quarters` → `Outdoor`) with zero room hallucination.
-4. **Diffusion-Based Motion Synthesis:** Translates planned camera trajectories (e.g. slow forward dollies, kitchen pans) into photorealistic 4-second video clips via Gemini Veo 2.0 with strict negative safety constraints.
+4. **Diffusion-Based Motion Synthesis:** Translates planned camera trajectories (e.g. slow forward dollies, kitchen pans) into photorealistic 4-second video clips via Gemini Veo with direct preservation and anti-distortion constraints. The current Veo 3.1 integration does not send a separate negative-prompt field.
 5. **Deterministic Video Normalization & Assembly:** Standardizes elementary streams with FFmpeg via proportional geometric letterbox padding (preventing room stretching) and seamless crossfading.
 6. **Dual-Inspection & Quantitative Evaluation:** Delivers an interactive 360° equirectangular canvas / 2D pan-zoom inspector, an automated 4-point verification engine, and a 6-axis human evaluation audit system.
 
@@ -50,7 +50,7 @@ The following diagram details the end-to-end pipeline architecture, data contrac
 │                                                                                     ▼ JSON Schemas                     │
 │   ┌───────────────────────────────────┐               ┌────────────────────────────────────────────────────────────┐   │
 │   │ Phase 4: Image-to-Video Diffusion │               │ Phase 3: Walkthrough Planning & Trajectory Graph           │   │
-│   │ • Gemini Veo 2.0 I2V Engine       │◀──────────────│ • Directed Topological Scene Graph Construction            │   │
+│   │ • Gemini Veo 3.1 I2V Engine       │◀──────────────│ • Directed Topological Scene Graph Construction            │   │
 │   │ • Prompt grounding & safety locks │ Camera Prompts│ • Hierarchy Sorting (Exterior ➔ Living ➔ Private ➔ Outdoor)│   │
 │   │ • Asynchronous execution queue    │  & Parameters │ • Conservative Camera Motion Planner (Pan/Dolly/Drift)     │   │
 │   │ • FFprobe elementary verification │               │ • Plan Fingerprinting & SHA-256 Versioning                 │   │
@@ -93,11 +93,11 @@ The following diagram details the end-to-end pipeline architecture, data contrac
 ### Phase 3: Walkthrough Planning & Scene Graph Construction
 - **Topological Sorting:** Builds a directed adjacency graph to eliminate spatial disorientation, enforcing an architectural sequence from public entryways to private quarters.
 - **Zero Spatial Hallucination:** Intermediate rooms omitted by the user are **never** synthetically fabricated; transitions between sparse rooms are handled via direct cuts.
-- **Conservative Camera Motion Selection:** Maps scene types to restrained camera trajectories (e.g. forward dolly for foyers, lateral pans for kitchens, subtle static drift for bathrooms) while injecting strict negative safety constraints.
+- **Conservative Camera Motion Selection:** Maps scene types to restrained camera trajectories (e.g. forward dolly for foyers, lateral pans for kitchens, subtle static drift for bathrooms) while using direct preservation and anti-distortion constraints in the Veo prompt. The current Veo 3.1 integration does not send a separate negative-prompt field.
 
 ### Phase 4: Image-to-Video Diffusion Generation
-- **Generative Video Synthesis:** Uses Google Gemini Veo 2.0 to synthesize 4-second video clips from single static photographs guided by the scripted motion prompts.
-- **Safety Prompt Engineering:** Appends negative prompt constraints (`no morphing, no disappearing furniture, no warping architecture, static lighting`) to prevent structural artifacts.
+- **Generative Video Synthesis:** Uses Google Gemini Veo 3.1 to synthesize 4-second video clips from single static photographs guided by the scripted motion prompts and direct preservation constraints.
+- **Safety Prompt Engineering:** Uses direct preservation and anti-distortion instructions (`preserve furniture, walls, lighting, and geometry; no distortion`) to reduce structural artifacts. The current Veo 3.1 integration does not send a separate negative-prompt field.
 - **Elementary Stream Verification:** Executes FFprobe checks on every generated clip to confirm valid codec headers (`h264`), resolution, and frame counts before assembly.
 
 ### Phase 5: Video Normalization & Multi-Clip Assembly
@@ -153,12 +153,11 @@ The platform integrates a standardized evaluation rubric and objective verificat
 ├── frontend/                          # Next.js 16 / React 19 Frontend Client
 │   ├── app/                           # App router (/studio, landing page, layout)
 │   ├── components/                    # Modular studio components
-│   │   ├── Phase1Upload.tsx           # Image upload, validation & metadata grid
-│   │   ├── Phase2SceneUnderstanding.tsx # AI scene classification & quality audit
-│   │   ├── Phase3WalkthroughPlan.tsx  # Interactive timeline & camera planner
-│   │   ├── Phase4VideoGeneration.tsx  # Video diffusion synthesis & retry queue
-│   │   ├── Phase5VideoAssembly.tsx    # Video player & FFmpeg assembly controls
-│   │   ├── Phase6Evaluation.tsx       # Automated checks & 6-axis review rubric
+│   │   ├── PropertyForm.tsx / Dropzone.tsx # Image upload and project setup
+│   │   ├── SceneResultsView.tsx       # AI scene classification & quality audit
+│   │   ├── WalkthroughPlanView.tsx    # Interactive plan & camera planner
+│   │   ├── GenerationView.tsx         # Queued video generation and fallback controls
+│   │   ├── FinalWalkthroughView.tsx   # Video player & FFmpeg assembly controls
 │   │   └── ImmersiveSceneViewer.tsx   # 360° Spherical & 2D Pan/Zoom Inspector
 │   ├── lib/api.ts                     # Full-featured typed REST API client
 │   └── types/                         # TypeScript interfaces mirroring Pydantic models
@@ -171,23 +170,24 @@ The platform integrates a standardized evaluation rubric and objective verificat
 │   │   │   ├── project.py             # Project & image metadata schemas
 │   │   │   ├── scene.py               # VLM scene understanding schemas
 │   │   │   ├── plan.py                # Walkthrough plan & camera schemas
-│   │   │   ├── video.py               # Video generation & assembly schemas
+│   │   │   ├── generation.py          # Video generation jobs and status schemas
 │   │   │   └── evaluation.py          # Verification & review schemas
 │   │   └── services/                  # Business logic services
 │   │       ├── image_preprocessor.py  # Validation, EXIF & multi-signal pano detection
-│   │       ├── scene_analysis_service.py # Gemini 2.5 Flash VLM inference
+│   │       ├── scene_analyzer/        # Gemini 2.5 Flash VLM inference
 │   │       ├── walkthrough_planner/   # Graph ordering, camera & transition planning
-│   │       ├── video_generation/      # Gemini Veo 2.0 provider & retry engine
+│   │       ├── video_generation/      # Gemini Veo provider, pacing and recovery
+│   │       ├── local_slideshow_service.py # No-API image slideshow fallback
 │   │       ├── video_assembler/       # FFmpeg probe, normalize, title, concat
 │   │       └── evaluation_service.py  # Verification checks & audit report generation
 │   ├── storage/projects/              # Isolated local project filesystem storage
-│   └── tests/                         # 51 unit & integration tests across all phases
+│   └── tests/                         # Unit and integration tests across all phases
 │
 ├── docs/                              # Comprehensive Technical Documentation
 │   ├── architecture.md                # In-depth subsystem architecture & data flows
 │   ├── api.md                         # Complete REST API endpoint reference
 │   ├── viva.md                        # 26 Core Viva questions & technical answers
-│   ├── limitations.md                 # System boundaries & academic constraints
+│   ├── future-upgrades.md             # Future upgrades and academic scope boundaries
 │   ├── final-demo.md                  # 17-step end-to-end live demonstration guide
 │   ├── evaluation.md                  # Metric definitions & evaluation guidelines
 │   ├── results.md                     # Experimental benchmarks & evaluation template
@@ -207,6 +207,18 @@ The platform integrates a standardized evaluation rubric and objective verificat
 - **Node.js:** `>= 18.0` (Tested on Node v20 LTS, v24)
 - **FFmpeg:** Bundled automatically via `imageio-ffmpeg` or local system binary
 - **Gemini API Key:** Active key from Google AI Studio (`GEMINI_API_KEY`)
+
+### Free-tier operation
+
+The application is designed to remain usable when Gemini/Veo free-tier capacity is limited:
+
+- Veo requests run one at a time by default.
+- Submissions are paced and transient rate limits use exponential backoff.
+- Quota failures pause the affected job instead of retrying indefinitely.
+- Users can select only the scenes they need to generate.
+- A local image-slideshow fallback can create a valid walkthrough without a video API call.
+
+Free-tier quotas are provider-controlled and cannot guarantee unlimited or immediate video generation. See [`docs/future-upgrades.md`](docs/future-upgrades.md) before onboarding multiple users.
 
 ---
 
@@ -257,34 +269,31 @@ npm run dev
 
 ## Automated Test Suite
 
-The project includes an automated test suite containing **51 test cases** verifying all 6 phases:
+The project includes an automated test suite covering all 6 phases:
 
 ```bash
 cd backend
 ./venv/bin/pytest tests/ -v
 ```
 
-```text
-============================== test session starts ==============================
-collected 51 items
-
-tests/test_image_upload.py ......... [14 passed - Phase 1 Uploads & Deduplication]
-tests/test_image_preprocessor.py .... [ 4 passed - Phase 1 Pillow Preprocessing]
-tests/test_scene_analysis.py ........ [ 8 passed - Phase 2 Gemini VLM & Quality Metrics]
-tests/test_walkthrough_planner.py ... [ 9 passed - Phase 3 Graph Sorting & Camera Motion]
-tests/test_video_generation.py ...... [ 4 passed - Phase 4 Video Synthesis & Verification]
-tests/test_video_assembler.py ....... [ 6 passed - Phase 5 FFmpeg Normalization & Concat]
-tests/test_evaluation.py ............ [ 5 passed - Phase 6 Pano, Verification & Reports]
-tests/test_projects.py .............. [ 5 passed - Project Lifecycle Management]
-
-============================== 51 passed in 4.57s ===============================
-```
+The exact test count and timing depend on the current checkout. The command above is the source of truth.
 
 To run the frontend production build verification:
 ```bash
 cd frontend
 npm run build
 ```
+
+## Vercel deployment
+
+The Next.js frontend and FastAPI backend can be deployed as separate Vercel projects.
+Follow [`docs/deployment-vercel.md`](docs/deployment-vercel.md) for the exact root
+directories, environment variables, and verification commands.
+
+The frontend is Vercel-ready. The backend has a Vercel adapter for academic demos and
+API experimentation, but reliable public video generation still requires durable media
+storage and a managed worker/container because Vercel serverless files and in-process
+background jobs are not persistent.
 
 ---
 
@@ -297,7 +306,7 @@ For exhaustive technical reference and evaluation preparation, consult the `/doc
 | [`docs/architecture.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/architecture.md) | Deep architectural specifications, module responsibilities, and data models. |
 | [`docs/api.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/api.md) | Complete REST API endpoint reference with request/response payloads. |
 | [`docs/viva.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/viva.md) | 26 Core Viva & Technical Defense questions with grounded answers. |
-| [`docs/limitations.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/limitations.md) | Academic boundaries, scope constraints, and explicit non-goals. |
+| [`docs/future-upgrades.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/future-upgrades.md) | Future upgrades, academic boundaries, scope constraints, and explicit non-goals. |
 | [`docs/final-demo.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/final-demo.md) | 17-step end-to-end live demonstration and evaluation script. |
 | [`docs/evaluation.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/evaluation.md) | Evaluation metric formulas, automated verification rules, and rubric scoring. |
 | [`docs/results.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/results.md) | Experimental test properties, performance benchmarks, and evaluation templates. |

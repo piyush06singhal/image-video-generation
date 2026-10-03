@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     
     # Image constraints
     MAX_IMAGE_SIZE_BYTES: int = 20 * 1024 * 1024  # 20 MB
+    MAX_IMAGES_PER_PROJECT: int = 20
+    MAX_ACTIVE_PROJECTS: int = 10
     MIN_IMAGE_WIDTH: int = 512
     MIN_IMAGE_HEIGHT: int = 512
     MAX_ANALYSIS_IMAGE_DIMENSION: int = 1536
@@ -32,14 +34,20 @@ class Settings(BaseSettings):
     VIDEO_PROVIDER: str = "gemini_veo"
     VIDEO_API_KEY: Optional[str] = None
     VIDEO_MODEL: str = "veo-3.1-generate-preview"
-    MAX_CONCURRENT_GENERATIONS: int = 2
+    # Free-tier Veo projects are burst-sensitive. Keep one remote generation
+    # in flight by default; deployments with paid quota can raise this safely.
+    MAX_CONCURRENT_GENERATIONS: int = 1
     VIDEO_DURATION_SECONDS: int = 4
     VIDEO_FPS: int = 24
     VIDEO_ASPECT_RATIO: str = "16:9"
     VIDEO_RESOLUTION: str = "720p"
     VIDEO_POLL_INTERVAL_SECONDS: float = 10.0
     VIDEO_POLL_TIMEOUT_SECONDS: float = 300.0
+    VIDEO_SUBMISSION_INTERVAL_SECONDS: float = 10.0
+    VIDEO_RATE_LIMIT_RETRY_ATTEMPTS: int = 3
+    VIDEO_RATE_LIMIT_BACKOFF_SECONDS: float = 15.0
     MAX_GENERATION_RETRIES: int = 3
+    MAX_SCENES_PER_GENERATION_REQUEST: int = 5
     
     # CORS
     CORS_ORIGINS: Union[List[str], str] = [

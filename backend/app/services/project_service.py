@@ -39,6 +39,16 @@ class ProjectService:
         """
         Creates a new project session with local directory structure.
         """
+        active_projects = len(self.storage.list_all_projects())
+        if active_projects >= settings.MAX_ACTIVE_PROJECTS:
+            raise AppException(
+                code="ACTIVE_PROJECT_LIMIT",
+                message=(
+                    f"This installation allows up to {settings.MAX_ACTIVE_PROJECTS} "
+                    "active projects. Delete an existing project before creating another."
+                ),
+                status_code=429,
+            )
         project_id = generate_project_id()
         now = datetime.now(timezone.utc).isoformat()
 
@@ -88,6 +98,22 @@ class ProjectService:
             raise ProjectNotFoundError(project_id)
 
         existing_images = project_data.get("images", [])
+        remaining_capacity = settings.MAX_IMAGES_PER_PROJECT - len(existing_images)
+        if remaining_capacity <= 0:
+            raise AppException(
+                code="PROJECT_IMAGE_LIMIT",
+                message=f"A project can contain at most {settings.MAX_IMAGES_PER_PROJECT} images.",
+                status_code=413,
+            )
+        if len(files_data) > remaining_capacity:
+            raise AppException(
+                code="PROJECT_IMAGE_LIMIT",
+                message=(
+                    f"This upload contains {len(files_data)} files, but the project "
+                    f"has room for only {remaining_capacity} more image(s)."
+                ),
+                status_code=413,
+            )
         # Set of existing hashes in this project for fast duplicate checking
         existing_hashes = {img["sha256"]: img["id"] for img in existing_images}
 

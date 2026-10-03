@@ -93,11 +93,19 @@ Retrieves overall clip generation progress and job status per scene.
 ### `POST /api/projects/{project_id}/scenes/{scene_id}/regenerate`
 Forces regeneration of an individual scene video clip.
 
+### `POST /api/projects/{project_id}/generation/jobs/{job_id}/retry`
+Retries one failed or paused scene job, subject to the configured retry limit.
+
 ### `GET /api/projects/{project_id}/clips/{scene_id}/file`
 Streams the generated MP4 clip for a scene.
 
 ### `GET /api/projects/{project_id}/clips/{scene_id}/download`
 Downloads the generated scene clip as an MP4 attachment.
+
+### `POST /api/projects/{project_id}/local-slideshow`
+Creates a deterministic local image slideshow walkthrough without calling Gemini/Veo.
+- **Response:** `FinalVideoMetadata`
+- **Use:** Free-tier quota fallback or offline demonstration mode.
 
 ---
 

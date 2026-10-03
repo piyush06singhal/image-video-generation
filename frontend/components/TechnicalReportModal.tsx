@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   Layers,
-  Clock,
   Film,
   Camera,
   Compass,
@@ -41,26 +40,29 @@ export function TechnicalReportModal({
     if (!isOpen) return;
 
     let isMounted = true;
-    setLoading(true);
-    setError(null);
+    const timeoutId = window.setTimeout(() => {
+      setLoading(true);
+      setError(null);
 
-    api
-      .getTechnicalReport(projectId)
-      .then((data) => {
-        if (isMounted) {
-          setReport(data);
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (isMounted) {
-          setError(err.message || "Failed to load technical report");
-          setLoading(false);
-        }
-      });
+      void api
+        .getTechnicalReport(projectId)
+        .then((data) => {
+          if (isMounted) {
+            setReport(data);
+            setLoading(false);
+          }
+        })
+        .catch((err) => {
+          if (isMounted) {
+            setError(err.message || "Failed to load technical report");
+            setLoading(false);
+          }
+        });
+    }, 0);
 
     return () => {
       isMounted = false;
+      window.clearTimeout(timeoutId);
     };
   }, [projectId, isOpen]);
 

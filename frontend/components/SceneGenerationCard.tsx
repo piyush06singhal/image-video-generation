@@ -63,6 +63,8 @@ export function SceneGenerationCard({
           ? "border-[var(--gold-2)] shadow-[0_0_20px_var(--gold-glow)] animate-pulse"
           : scene.status === "failed"
           ? "border-red-500/40"
+          : scene.status === "paused"
+          ? "border-amber-500/40"
           : "border-[var(--border-1)]"
       }`}
     >
@@ -111,6 +113,21 @@ export function SceneGenerationCard({
               <AlertTriangle className="w-3 h-3" />
               Failed
             </span>
+          )}
+          {scene.status === "paused" && (
+            <span className="badge bg-amber-950/70 border border-amber-500/30 text-amber-200 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              Quota paused
+            </span>
+          )}
+          {scene.status === "paused" && (
+            <div className="mt-2 p-2 bg-amber-950/40 border border-amber-500/30 rounded-lg text-xs text-amber-200">
+              <p className="font-semibold">Provider quota paused</p>
+              <p className="mt-1 text-amber-100/80">
+                Wait for the provider quota window to reset, then retry this scene.
+              </p>
+              {scene.last_error && <p className="mt-1 line-clamp-2">{scene.last_error}</p>}
+            </div>
           )}
         </div>
 
@@ -192,13 +209,19 @@ export function SceneGenerationCard({
                 </div>
               </div>
             </>
-          ) : scene.status === "failed" ? (
+          ) : scene.status === "failed" || scene.status === "paused" ? (
             <>
-              <span className="text-[var(--text-3)] text-xs">Ready to retry</span>
+              <span className={scene.status === "paused" ? "text-amber-200 text-xs" : "text-[var(--text-3)] text-xs"}>
+                {scene.status === "paused" ? "Retry after quota reset" : "Ready to retry"}
+              </span>
               <button
                 onClick={handleRetryClick}
                 disabled={isRetrying}
-                className="px-3 py-1 bg-red-950/80 hover:bg-red-900 text-red-200 border border-red-500/30 rounded-lg text-xs font-semibold transition flex items-center gap-1"
+                className={`px-3 py-1 rounded-lg text-xs font-semibold transition flex items-center gap-1 ${
+                  scene.status === "paused"
+                    ? "bg-amber-950/80 hover:bg-amber-900 text-amber-200 border border-amber-500/30"
+                    : "bg-red-950/80 hover:bg-red-900 text-red-200 border border-red-500/30"
+                }`}
               >
                 {isRetrying ? (
                   <>
@@ -216,7 +239,7 @@ export function SceneGenerationCard({
                 <Sparkles className="w-3.5 h-3.5" />
                 Synthesizing video…
               </span>
-              <span>Veo 2.0</span>
+              <span>Veo 3.1</span>
             </div>
           ) : (
             <div className="text-[var(--text-3)] text-xs font-mono">

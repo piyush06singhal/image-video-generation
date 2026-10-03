@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { EvaluationCreate, EvaluationSummary } from "@/types/evaluation";
 import { TechnicalReportModal } from "@/components/TechnicalReportModal";
@@ -62,8 +63,9 @@ export function EvaluationSection({
   propertyName = "Property",
   onProjectDeleted,
 }: EvaluationSectionProps) {
+  const router = useRouter();
   const [summary, setSummary] = useState<EvaluationSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,7 +101,10 @@ export function EvaluationSection({
   }, [projectId]);
 
   useEffect(() => {
-    fetchSummary();
+    const timeoutId = window.setTimeout(() => {
+      void fetchSummary();
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
   }, [fetchSummary]);
 
   const handleRatingChange = (key: string, value: number) => {
@@ -152,7 +157,7 @@ export function EvaluationSection({
       if (onProjectDeleted) {
         onProjectDeleted();
       } else {
-        window.location.href = "/";
+        router.push("/");
       }
     } catch (err: unknown) {
       const e = err as { message?: string };

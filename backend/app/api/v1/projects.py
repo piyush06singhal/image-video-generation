@@ -38,6 +38,7 @@ from app.services.scene_service import scene_service
 from app.services.video_assembler import video_assembler_service
 from app.services.video_generation import video_generation_service
 from app.services.walkthrough_planner import walkthrough_planner
+from app.services.local_slideshow_service import local_slideshow_service
 
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
@@ -321,7 +322,7 @@ async def get_generation_job(project_id: str, job_id: str):
 @router.post("/{project_id}/generation/jobs/{job_id}/retry", response_model=ApiResponse[GenerationJob])
 async def retry_generation_job(project_id: str, job_id: str):
     """
-    Retries a failed generation job without re-executing other scenes.
+    Retries a failed or quota-paused generation job without re-executing other scenes.
     """
     job = await video_generation_service.retry_job(project_id, job_id)
     return ApiResponse.success_response(job)
@@ -351,6 +352,13 @@ async def get_scene_clip_file(project_id: str, scene_id: str):
         media_type="video/mp4",
         filename=clip_path.name,
     )
+
+
+@router.post("/{project_id}/local-slideshow", response_model=ApiResponse[FinalVideoMetadata])
+async def create_local_slideshow(project_id: str):
+    """Create a local image slideshow fallback without calling a remote AI provider."""
+    metadata = local_slideshow_service.create(project_id)
+    return ApiResponse.success_response(metadata)
 
 
 # ==========================================

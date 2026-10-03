@@ -23,7 +23,7 @@ This outline structures the academic defense and minor project viva presentation
 1. Automated image validation, format normalization, and SHA-256 deduplication.
 2. Vision-language multimodal scene classification (Gemini 2.5 Flash).
 3. Deterministic topological scene graph ordering and conservative camera motion planning.
-4. Per-scene image-to-video diffusion generation (Gemini Veo 2.0).
+4. Per-scene image-to-video diffusion generation (Gemini Veo 3.1).
 5. Deterministic FFmpeg video assembly with restrained crossfades and title cards.
 6. Immersive 360°/2D spatial inspection viewer and 6-dimension evaluation framework.
 
@@ -51,10 +51,10 @@ This outline structures the academic defense and minor project viva presentation
 
 ### Slide 10: Phase 3 (Cont.) — Camera Motion Trajectory Planning
 - Conservative room-specific trajectories (Slow Forward, Gentle Pan, Subtle Dolly).
-- Injection of strict negative safety constraints to prevent morphing, warping, and architectural hallucination.
+- Direct preservation and anti-distortion prompt constraints to reduce morphing, warping, and architectural hallucination; Veo 3.1 does not receive a separate negative-prompt field.
 
 ### Slide 11: Phase 4 — Generative Image-to-Video Diffusion
-- Gemini Veo 2.0 / Veo 3.1 video generation per scene.
+- Gemini Veo 3.1 video generation per scene.
 - Automated FFprobe stream validation (duration, 24fps, H.264 codec, elementary stream headers).
 - Asynchronous polling and individual scene retry queues.
 
@@ -78,7 +78,7 @@ This outline structures the academic defense and minor project viva presentation
 - Video output specifications: 24.0s duration, 24fps, H.264 MP4.
 - Target evaluation benchmarks met (Overall Score: 4.38 / 5.0).
 
-### Slide 16: Academic Scope & Honest Limitations
+### Slide 16: Academic Scope & Future Upgrades
 - No metric 3D mesh or SLAM reconstruction; purely topological ordering and generative diffusion.
 - No hallucinated intermediate hallway footage when photos are missing.
 - Dependency on cloud generative AI provider credentials.

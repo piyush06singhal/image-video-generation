@@ -83,16 +83,16 @@ body {
     radial-gradient(ellipse 70% 40% at 50% -5%, rgba(184,136,43,0.05) 0%, transparent 65%),
     radial-gradient(ellipse 40% 30% at 90% 80%, rgba(23,19,15,0.025) 0%, transparent 60%);
   color: var(--text-1);
-  font-family: "Outfit", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-outfit), system-ui, -apple-system, sans-serif;
   min-height: 100vh;
   line-height: 1.65;
   overflow-x: hidden;
 }
 
 /* Typography */
-.font-display { font-family: "Playfair Display", Georgia, serif; }
-.font-body    { font-family: "Outfit", system-ui, sans-serif; }
-.font-mono    { font-family: "JetBrains Mono", ui-monospace, monospace; }
+.font-display { font-family: var(--font-playfair), Georgia, serif; }
+.font-body    { font-family: var(--font-outfit), system-ui, sans-serif; }
+.font-mono    { font-family: var(--font-jetbrains), ui-monospace, monospace; }
 
 .text-gold {
   background: linear-gradient(135deg, #9b6d16 0%, #b8882b 45%, #7a5210 100%);
@@ -255,7 +255,7 @@ textarea {
   background: var(--bg-card) !important;
   color: var(--text-1) !important;
   border: 1.5px solid var(--border-1) !important;
-  font-family: "Outfit", sans-serif !important;
+  font-family: var(--font-outfit), sans-serif !important;
   font-size: 0.9rem !important;
   transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
 }

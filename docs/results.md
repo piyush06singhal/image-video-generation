@@ -24,7 +24,7 @@ This document records the experimental results and quantitative performance metr
 | **Phase 1: Ingestion & Validation** | Pillow / SHA-256 | ~0.4s | 6 pristine originals, 6 web thumbnails, metadata index | **PASS** |
 | **Phase 2: Scene Understanding** | Gemini 2.5 Flash Vision | ~4.8s total (0.8s/img) | 6 structured room analyses (lighting, features, connections) | **PASS** |
 | **Phase 3: Walkthrough Planning** | Graph Ordering & Camera Planner | ~0.08s | Directed topological plan (v1), 6 camera prompts | **PASS** |
-| **Phase 4: Video Clip Generation** | Gemini Veo 2.0 / Veo 3.1 | ~35s per clip | 6 individual 4-second MP4 scene clips (24fps, H.264) | **PASS** |
+| **Phase 4: Video Clip Generation** | Gemini Veo 3.1 | ~35s per clip | 6 individual 4-second MP4 scene clips (24fps, H.264) | **PASS** |
 | **Phase 5: Video Assembly** | FFmpeg Normalization Engine | ~1.8s | `walkthrough.mp4` (24.0s total duration, 720p/1080p, H.264) | **PASS** |
 | **Phase 6: Quality Evaluation** | Automated Checker & Human Form | ~0.15s | Summary metrics, per-scene flags, downloadable `.txt` report | **PASS** |
 

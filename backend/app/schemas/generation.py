@@ -10,6 +10,7 @@ class GenerationJobStatus(str, Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+    PAUSED = "paused"
     CANCELLED = "cancelled"
 
 
@@ -18,6 +19,7 @@ class SceneGenerationStatus(str, Enum):
     GENERATING = "generating"
     COMPLETED = "completed"
     FAILED = "failed"
+    PAUSED = "paused"
 
 
 class ProjectGenerationStatus(str, Enum):
@@ -26,6 +28,7 @@ class ProjectGenerationStatus(str, Enum):
     PARTIALLY_COMPLETED = "partially_completed"
     COMPLETED = "completed"
     FAILED = "failed"
+    PAUSED = "paused"
 
 
 class QualityAssessment(str, Enum):

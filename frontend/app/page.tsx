@@ -76,7 +76,7 @@ const PIPELINE_STAGES = [
     description:
       "Google Veo synthesizes stabilized, high-definition video clips from the source photographs using the planned camera motions. Artifact checks ensure consistent frame rates and structural integrity.",
     metrics: [
-      { label: "Synthesis Engine", value: "Google Veo 2.0" },
+      { label: "Synthesis Engine", value: "Google Veo 3.1" },
       { label: "Output Spec", value: "1080p HD @ 24fps" },
       { label: "Post-QA", value: "Bitrate & Artifact Filtering" },
     ],
@@ -198,7 +198,7 @@ export default function LandingPage() {
           <div className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full border border-[var(--border-2)] bg-white/70 shadow-md anim-float" style={{ backdropFilter: "blur(12px)" }}>
             <Sparkles size={14} className="text-[var(--gold-2)]" />
             <span className="text-[11px] font-bold tracking-widest uppercase" style={{ color: "#8a6211" }}>
-              Gemini 2.5 Flash · Google Veo 2.0 · AI-Powered Cinematography
+              Gemini 2.5 Flash · Google Veo 3.1 · AI-Powered Cinematography
             </span>
           </div>
 
@@ -328,7 +328,7 @@ export default function LandingPage() {
                   </div>
                   <div className="flex items-center gap-2 bg-[#0d1220]/90 px-3.5 py-1.5 rounded-full border border-white/10 text-xs font-mono text-emerald-400 shadow-md">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                    <span>Veo 2.0 HD Ready</span>
+                    <span>Veo 3.1 HD Ready</span>
                   </div>
                 </div>
 
@@ -621,7 +621,7 @@ export default function LandingPage() {
               <div className="w-12 h-12 rounded-2xl bg-[var(--gold-dim)] border border-[var(--border-2)] flex items-center justify-center shadow-inner">
                 <Video size={22} className="text-[var(--gold-2)]" />
               </div>
-              <h4 className="font-bold text-base text-[var(--text-1)]">Google Veo 2.0</h4>
+              <h4 className="font-bold text-base text-[var(--text-1)]">Google Veo 3.1</h4>
               <p className="text-xs sm:text-sm text-[var(--text-2)] leading-relaxed">
                 Advanced image-to-video diffusion maintaining geometric consistency, zero hallucination, and realistic camera physics.
               </p>

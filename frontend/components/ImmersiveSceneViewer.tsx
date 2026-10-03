@@ -16,13 +16,10 @@ import {
   ZoomOut,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
   Info,
   CheckCircle2,
   AlertTriangle,
   XCircle,
-  Tag,
-  Sun,
   Eye,
   Film,
   Image as ImageIcon,
@@ -91,7 +88,10 @@ export function ImmersiveSceneViewer({
   }, [projectId, propScenes, propImages]);
 
   useEffect(() => {
-    fetchInternalData();
+    const timeoutId = window.setTimeout(() => {
+      void fetchInternalData();
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
   }, [fetchInternalData]);
 
   const scenes = propScenes && propScenes.length > 0 ? propScenes : internalScenes;
@@ -143,19 +143,22 @@ export function ImmersiveSceneViewer({
 
   // Sync state when active scene changes
   useEffect(() => {
-    setZoom(1.0);
-    setPanOffset({ x: 0, y: 0 });
-    setYaw(0);
-    setPitch(0);
-    setFov(75);
-    setAutoRotate(false);
-    setIsPanoramicLocal(Boolean(activeImage?.is_panoramic));
+    const timeoutId = window.setTimeout(() => {
+      setZoom(1.0);
+      setPanOffset({ x: 0, y: 0 });
+      setYaw(0);
+      setPitch(0);
+      setFov(75);
+      setAutoRotate(false);
+      setIsPanoramicLocal(Boolean(activeImage?.is_panoramic));
 
-    const rev = sceneReviews.find((r) => r.scene_id === activeScene?.scene_id);
-    setReviewStatus(rev?.status || "acceptable");
-    setSelectedFlags(rev?.flags || []);
-    setReviewNotes(rev?.notes || "");
-    setReviewSavedSuccess(false);
+      const rev = sceneReviews.find((r) => r.scene_id === activeScene?.scene_id);
+      setReviewStatus(rev?.status || "acceptable");
+      setSelectedFlags(rev?.flags || []);
+      setReviewNotes(rev?.notes || "");
+      setReviewSavedSuccess(false);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
   }, [activeSceneIndex, activeScene?.scene_id, activeImage, sceneReviews]);
 
   // Handle Panorama Canvas 360 Rendering
@@ -167,7 +170,7 @@ export function ImmersiveSceneViewer({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    let animId: number | null = null;
+    const animId: number | null = null;
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.src = activeImage.file_url || activeImage.analysis_image_url || activeImage.thumbnail_url || "";

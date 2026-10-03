@@ -32,6 +32,8 @@ class GeminiVeoProvider(ImageToVideoProvider):
         )
         self.model_name = model_name or settings.VIDEO_MODEL or "veo-2.0-generate-001"
         self._client: Optional[genai.Client] = None
+        self._submission_lock = asyncio.Lock()
+        self._last_submission_at = 0.0
 
     def _get_client(self) -> genai.Client:
         if not self.api_key:
@@ -91,6 +93,55 @@ class GeminiVeoProvider(ImageToVideoProvider):
             500,
         )
 
+    async def _submit_generation(
+        self,
+        client: genai.Client,
+        image_input: types.Image,
+        prompt: str,
+        gen_config: types.GenerateVideosConfig,
+    ) -> Any:
+        """Submit one Veo operation at a paced rate with bounded retry."""
+        attempts = max(1, settings.VIDEO_RATE_LIMIT_RETRY_ATTEMPTS)
+        async with self._submission_lock:
+            for attempt in range(1, attempts + 1):
+                elapsed = time.monotonic() - self._last_submission_at
+                wait_for = settings.VIDEO_SUBMISSION_INTERVAL_SECONDS - elapsed
+                if wait_for > 0:
+                    await asyncio.sleep(wait_for)
+
+                try:
+                    operation = await asyncio.to_thread(
+                        client.models.generate_videos,
+                        model=self.model_name,
+                        source=types.GenerateVideosSource(
+                            prompt=prompt,
+                            image=image_input,
+                        ),
+                        config=gen_config,
+                    )
+                    self._last_submission_at = time.monotonic()
+                    return operation
+                except Exception as exc:
+                    self._last_submission_at = time.monotonic()
+                    error_text = str(exc).lower()
+                    is_rate_limited = any(
+                        marker in error_text
+                        for marker in ("429", "quota", "rate limit", "resource_exhausted")
+                    )
+                    if not is_rate_limited or attempt >= attempts:
+                        raise
+
+                    backoff = settings.VIDEO_RATE_LIMIT_BACKOFF_SECONDS * (2 ** (attempt - 1))
+                    logger.warning(
+                        "Veo submission rate-limited (attempt %s/%s); retrying in %.1fs",
+                        attempt,
+                        attempts,
+                        backoff,
+                    )
+                    await asyncio.sleep(backoff)
+
+        raise RuntimeError("Veo submission retry loop ended unexpectedly")
+
     async def generate_clip(
         self,
         source_image_path: Path,
@@ -141,14 +192,11 @@ class GeminiVeoProvider(ImageToVideoProvider):
             # 3. Submit asynchronous generation operation
             # Prompt is kept concise to avoid safety filter rejections
             logger.info(f"Generation prompt ({len(prompt)} chars): {prompt[:120]}...")
-            operation = await asyncio.to_thread(
-                client.models.generate_videos,
-                model=self.model_name,
-                source=types.GenerateVideosSource(
-                    prompt=prompt,
-                    image=image_input,
-                ),
-                config=gen_config,
+            operation = await self._submit_generation(
+                client=client,
+                image_input=image_input,
+                prompt=prompt,
+                gen_config=gen_config,
             )
 
             provider_job_id = getattr(operation, "name", str(time.time()))

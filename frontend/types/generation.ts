@@ -1,8 +1,8 @@
-export type GenerationJobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+export type GenerationJobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'paused' | 'cancelled';
 
-export type SceneGenerationStatus = 'pending' | 'generating' | 'completed' | 'failed';
+export type SceneGenerationStatus = 'pending' | 'generating' | 'completed' | 'failed' | 'paused';
 
-export type ProjectGenerationStatus = 'ready' | 'generating' | 'partially_completed' | 'completed' | 'failed';
+export type ProjectGenerationStatus = 'ready' | 'generating' | 'partially_completed' | 'completed' | 'failed' | 'paused';
 
 export type QualityAssessment = 'acceptable' | 'needs_review' | 'failed';
 

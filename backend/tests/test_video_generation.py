@@ -35,9 +35,15 @@ from app.services.video_generation.video_validator import VideoValidator
 class MockVideoProvider(ImageToVideoProvider):
     """Mock provider for unit test assertions that produces a real, valid tiny MP4."""
 
-    def __init__(self, should_fail: bool = False, fail_code: str = "PROVIDER_RATE_LIMIT"):
+    def __init__(
+        self,
+        should_fail: bool = False,
+        fail_code: str = "PROVIDER_RATE_LIMIT",
+        fail_message: str = "Simulated provider error",
+    ):
         self.should_fail = should_fail
         self.fail_code = fail_code
+        self.fail_message = fail_message
         self.call_count = 0
 
     def get_provider_name(self) -> str:
@@ -57,7 +63,7 @@ class MockVideoProvider(ImageToVideoProvider):
     ) -> ProviderResult:
         self.call_count += 1
         if self.should_fail:
-            raise AppException(code=self.fail_code, message="Simulated provider error", status_code=429)
+            raise AppException(code=self.fail_code, message=self.fail_message, status_code=429)
 
         # Write a real, tiny valid MP4 video using OpenCV
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -261,6 +267,165 @@ async def test_video_generation_failure_and_retry(test_project_with_plan, isolat
     post_retry_overview = service.get_or_create_overview(project_id)
     assert post_retry_overview.completed_scenes == 1
     assert post_retry_overview.scenes[0].status == SceneGenerationStatus.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_quota_error_pauses_generation(test_project_with_plan, isolated_storage):
+    project_id, _ = test_project_with_plan
+    provider = MockVideoProvider(
+        should_fail=True,
+        fail_message="Provider quota exhausted; try again later.",
+    )
+    service = VideoGenerationService(provider=provider)
+    service.storage = isolated_storage
+
+    await service.generate_clips(project_id)
+    await asyncio.sleep(0.2)
+
+    overview = service.get_or_create_overview(project_id)
+    assert overview.status == ProjectGenerationStatus.PAUSED
+    assert overview.scenes[0].status == SceneGenerationStatus.PAUSED
+    assert overview.active_jobs[0].status == GenerationJobStatus.PAUSED
+
+
+@pytest.mark.asyncio
+async def test_selected_scene_generation_only_schedules_requested_scene(
+    test_project_with_plan,
+    isolated_storage,
+):
+    project_id, plan = test_project_with_plan
+    uploads_dir = isolated_storage.get_project_uploads_dir(project_id)
+    second_image = uploads_dir / "img_002_kitchen.jpg"
+    cv2.imwrite(str(second_image), np.full((720, 1280, 3), 120, dtype=np.uint8))
+
+    second_scene = plan.scenes[0].model_copy(
+        update={
+            "order": 2,
+            "scene_id": "scene_img_002",
+            "image_id": "img_002",
+            "label": "Kitchen",
+            "original_filename": "kitchen.jpg",
+        }
+    )
+    plan.scenes.append(second_scene)
+    isolated_storage.save_plan_json(project_id, plan.model_dump())
+
+    project = isolated_storage.load_project_json(project_id)
+    project["images"].append(
+        {
+            **project["images"][0],
+            "id": "img_002",
+            "filename": second_image.name,
+            "original_filename": "kitchen.jpg",
+        }
+    )
+    isolated_storage.save_project_json(project_id, project)
+
+    provider = MockVideoProvider()
+    service = VideoGenerationService(provider=provider)
+    service.storage = isolated_storage
+
+    await service.generate_clips(project_id, GenerateRequest(scene_ids=["scene_img_002"]))
+    await asyncio.sleep(0.3)
+
+    overview = service.get_or_create_overview(project_id)
+    assert provider.call_count == 1
+    assert overview.scenes[0].status == SceneGenerationStatus.PENDING
+    assert overview.scenes[1].status == SceneGenerationStatus.COMPLETED
+    assert [job.scene_id for job in overview.active_jobs] == ["scene_img_002"]
+
+
+@pytest.mark.asyncio
+async def test_generation_request_limit_is_enforced(test_project_with_plan, isolated_storage, monkeypatch):
+    project_id, _ = test_project_with_plan
+    monkeypatch.setattr(settings, "MAX_SCENES_PER_GENERATION_REQUEST", 1)
+    service = VideoGenerationService(provider=MockVideoProvider())
+    service.storage = isolated_storage
+
+    with pytest.raises(AppException, match="at most 1 scenes"):
+        await service.generate_clips(
+            project_id,
+            GenerateRequest(scene_ids=["scene_img_001", "scene_missing"]),
+        )
+
+
+@pytest.mark.asyncio
+async def test_repeated_generation_does_not_duplicate_active_jobs(
+    test_project_with_plan,
+    isolated_storage,
+):
+    project_id, _ = test_project_with_plan
+    provider = MockVideoProvider()
+    service = VideoGenerationService(provider=provider)
+    service.storage = isolated_storage
+
+    await service.generate_clips(project_id)
+    first_overview = service.get_or_create_overview(project_id)
+    await service.generate_clips(project_id)
+    second_overview = service.get_or_create_overview(project_id)
+
+    assert len(first_overview.active_jobs) == 1
+    assert len(second_overview.active_jobs) == 1
+    await asyncio.sleep(0.4)
+    assert provider.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_startup_recovery_resumes_processing_and_queued_jobs(
+    test_project_with_plan,
+    isolated_storage,
+):
+    project_id, plan = test_project_with_plan
+    uploads_dir = isolated_storage.get_project_uploads_dir(project_id)
+    second_image = uploads_dir / "img_002_kitchen.jpg"
+    cv2.imwrite(str(second_image), np.full((720, 1280, 3), 120, dtype=np.uint8))
+    second_scene = plan.scenes[0].model_copy(
+        update={
+            "order": 2,
+            "scene_id": "scene_img_002",
+            "image_id": "img_002",
+            "label": "Kitchen",
+            "original_filename": "kitchen.jpg",
+        }
+    )
+    plan.scenes.append(second_scene)
+    isolated_storage.save_plan_json(project_id, plan.model_dump())
+
+    from app.schemas.generation import GenerationJob
+
+    jobs = [
+        GenerationJob(
+            job_id="job_processing",
+            project_id=project_id,
+            scene_id="scene_img_001",
+            image_id="img_001",
+            provider="mock_video_provider",
+            status=GenerationJobStatus.PROCESSING,
+        ),
+        GenerationJob(
+            job_id="job_queued",
+            project_id=project_id,
+            scene_id="scene_img_002",
+            image_id="img_002",
+            provider="mock_video_provider",
+            status=GenerationJobStatus.QUEUED,
+        ),
+    ]
+    isolated_storage.save_generation_json(
+        project_id,
+        {"jobs": [job.model_dump() for job in jobs], "clips": []},
+    )
+
+    provider = MockVideoProvider()
+    service = VideoGenerationService(provider=provider)
+    service.storage = isolated_storage
+    await service.recover_pending_jobs()
+    await asyncio.sleep(0.4)
+
+    overview = service.get_or_create_overview(project_id)
+    assert provider.call_count == 2
+    assert overview.completed_scenes == 2
+    assert all(job.status == GenerationJobStatus.COMPLETED for job in overview.active_jobs)
 
 
 def test_api_video_generation_routes(test_project_with_plan):

@@ -23,6 +23,10 @@ AI_MODEL=gemini-2.5-flash
 VIDEO_PROVIDER=gemini_veo
 VIDEO_API_KEY=your_gemini_api_key_here
 VIDEO_MODEL=veo-3.1-generate-preview
+MAX_CONCURRENT_GENERATIONS=1
+VIDEO_SUBMISSION_INTERVAL_SECONDS=10
+VIDEO_RATE_LIMIT_RETRY_ATTEMPTS=3
+VIDEO_RATE_LIMIT_BACKOFF_SECONDS=15
 ```
 
 ```env
@@ -97,16 +101,18 @@ npm run dev
   - *Smooth Pan Left/Right* for kitchens.
   - *Subtle Dolly* for bedrooms.
   - *Static Subtle Motion* for compact bathrooms.
-- Highlight the injected negative safety prompts (`no morphing, no warping architecture, no appearing people`).
+- Highlight the direct preservation and anti-distortion prompt constraints used by the Veo 3.1 integration. It does not send a separate negative-prompt field.
 
 ### Step 11 — Generate Video Clips
 - Advance to Phase 4 **"Video Generation"**.
-- Click **"Generate All Scene Video Clips"**.
-- Explain that Gemini Veo synthesizes 4-second video clips guided by the static photographs and camera prompts.
+- Select only the scenes needed for the demonstration, then click **"Generate Selected"**.
+- Explain that one Gemini Veo request is submitted at a time with pacing to reduce free-tier bursts.
+- If the provider quota is exhausted, the affected job is paused instead of being retried indefinitely.
 
 ### Step 12 — Show Generated Scene Clips
 - Inspect individual generated scene clips in the browser player.
 - Point out that every clip is validated via FFprobe (24fps, H.264 codec, duration: 4.0s).
+- If Veo is unavailable, click **"Use Image Slideshow"** to create a local, aspect-ratio-preserving MP4 without an API call.
 
 ### Step 13 — Assemble Final Walkthrough
 - Advance to Phase 5 **"Walkthrough & Review"**.

@@ -27,6 +27,8 @@ export function GenerationView({ projectId, onBackToPlan, onProceedToPhase5 }: G
   const [loading, setLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [forceRegenerate, setForceRegenerate] = useState(false);
+  const [selectedSceneIds, setSelectedSceneIds] = useState<string[]>([]);
+  const [isCreatingFallback, setIsCreatingFallback] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Video preview modal state
@@ -93,6 +95,37 @@ export function GenerationView({ projectId, onBackToPlan, onProceedToPhase5 }: G
       const e = err as { message?: string };
       setError(e.message || "Video generation failed to initialize");
       setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateSelected = async () => {
+    if (!selectedSceneIds.length) return;
+    setError(null);
+    setIsGenerating(true);
+    try {
+      setOverview(await api.generateClips(projectId, {
+        scene_ids: selectedSceneIds,
+        force_regenerate: forceRegenerate,
+      }));
+      setSelectedSceneIds([]);
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      setError(e.message || "Selected generation failed to initialize");
+      setIsGenerating(false);
+    }
+  };
+
+  const handleLocalSlideshow = async () => {
+    setError(null);
+    setIsCreatingFallback(true);
+    try {
+      await api.createLocalSlideshow(projectId);
+      if (onProceedToPhase5) onProceedToPhase5();
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      setError(e.message || "Could not create the local slideshow fallback");
+    } finally {
+      setIsCreatingFallback(false);
     }
   };
 
@@ -173,7 +206,7 @@ export function GenerationView({ projectId, onBackToPlan, onProceedToPhase5 }: G
 
             <button
               onClick={handleGenerateAll}
-              disabled={isGenerating}
+              disabled={isGenerating || Boolean(overview?.scenes.some((scene) => scene.status === "paused"))}
               className="btn-ghost px-5 py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 border border-[var(--border-2)] disabled:opacity-50"
             >
               {isGenerating ? (
@@ -190,6 +223,20 @@ export function GenerationView({ projectId, onBackToPlan, onProceedToPhase5 }: G
                 </>
               )}
             </button>
+            <button
+              onClick={handleGenerateSelected}
+              disabled={isGenerating || selectedSceneIds.length === 0}
+              className="btn-ghost px-4 py-3 rounded-xl font-bold text-sm disabled:opacity-50"
+            >
+              Generate Selected ({selectedSceneIds.length})
+            </button>
+            <button
+              onClick={handleLocalSlideshow}
+              disabled={isCreatingFallback}
+              className="btn-ghost px-4 py-3 rounded-xl font-bold text-sm border border-[var(--border-2)] disabled:opacity-50"
+            >
+              {isCreatingFallback ? "Creating fallback…" : "Use Image Slideshow"}
+            </button>
 
             {overview && overview.completed_scenes > 0 && onProceedToPhase5 && (
               <button
@@ -201,6 +248,11 @@ export function GenerationView({ projectId, onBackToPlan, onProceedToPhase5 }: G
               </button>
             )}
           </div>
+          {overview?.status === "paused" && (
+            <div className="mt-5 rounded-xl border border-[var(--amber)]/30 bg-[var(--amber-dim)] px-4 py-3 text-sm text-[var(--text-2)]">
+              Free-tier provider quota is paused. Wait for the provider quota window to reset, then use the scene Retry buttons. You can also create the local image slideshow now. Duplicate batch jobs are blocked while a scene is queued, processing, or paused.
+            </div>
+          )}
         </div>
 
         {/* Stats Metrics Bar */}
@@ -233,7 +285,7 @@ export function GenerationView({ projectId, onBackToPlan, onProceedToPhase5 }: G
               <span className="text-[10px] font-mono text-[var(--gold-1)] uppercase block font-bold">Engine</span>
               <span className="text-base font-semibold text-[var(--text-1)] mt-1 block flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-[var(--gold-2)]" />
-                Gemini Veo 2.0
+                Gemini Veo
               </span>
               <span className="text-xs text-[var(--text-3)] block mt-0.5">Image-to-Video Diffusion</span>
             </div>
@@ -280,14 +332,27 @@ export function GenerationView({ projectId, onBackToPlan, onProceedToPhase5 }: G
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {overview?.scenes.map((scene) => (
-            <SceneGenerationCard
-              key={scene.scene_id}
-              scene={scene}
-              projectId={projectId}
-              onPreview={(s) => setSelectedPreviewScene(s)}
-              onRetry={handleRetryJob}
-              onRegenerate={handleRegenerateScene}
-            />
+            <div key={scene.scene_id} className="relative">
+              <label className="absolute left-4 top-4 z-10 flex items-center gap-2 rounded-lg bg-white/90 px-2 py-1 text-xs font-semibold text-[var(--text-2)]">
+                <input
+                  type="checkbox"
+                  checked={selectedSceneIds.includes(scene.scene_id)}
+                  onChange={(event) => setSelectedSceneIds((current) =>
+                    event.target.checked
+                      ? [...current, scene.scene_id]
+                      : current.filter((id) => id !== scene.scene_id)
+                  )}
+                />
+                Select
+              </label>
+              <SceneGenerationCard
+                scene={scene}
+                projectId={projectId}
+                onPreview={(s) => setSelectedPreviewScene(s)}
+                onRetry={handleRetryJob}
+                onRegenerate={handleRegenerateScene}
+              />
+            </div>
           ))}
         </div>
       </div>

@@ -1,6 +1,31 @@
 import io
+import pytest
 from tests.helpers import create_test_image_bytes
+from app.core.config import settings
 from app.services.project_service import project_service
+
+
+def test_project_image_limit_rejects_upload(client, monkeypatch):
+    monkeypatch.setattr(settings, "MAX_IMAGES_PER_PROJECT", 1)
+    project_id = client.post("/api/projects", json={"name": "Image Limit Test"}).json()["data"]["id"]
+    files = [
+        ("files", ("one.jpg", create_test_image_bytes(), "image/jpeg")),
+        ("files", ("two.jpg", create_test_image_bytes(color=(20, 30, 40)), "image/jpeg")),
+    ]
+
+    response = client.post(f"/api/projects/{project_id}/images", files=files)
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "PROJECT_IMAGE_LIMIT"
+
+
+def test_active_project_limit_rejects_project_creation(client, monkeypatch):
+    monkeypatch.setattr(settings, "MAX_ACTIVE_PROJECTS", 0)
+
+    response = client.post("/api/projects", json={"name": "Project Limit Test"})
+
+    assert response.status_code == 429
+    assert response.json()["error"]["code"] == "ACTIVE_PROJECT_LIMIT"
 
 
 def test_upload_valid_image(client):

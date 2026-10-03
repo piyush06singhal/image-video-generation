@@ -34,7 +34,7 @@ This document details the 13 essential screenshots to capture for the project re
 
 ### Screenshot 8: Camera Motion Trajectory & Constraint Planner
 - **URL / View:** `http://localhost:3000/studio` (Phase 3)
-- **Key UI Elements to Show:** Camera motion selector pills (*Slow Forward Movement*, *Smooth Pan Left*, *Subtle Dolly*), duration badges, and negative safety constraint prompts.
+- **Key UI Elements to Show:** Camera motion selector pills (*Slow Forward Movement*, *Smooth Pan Left*, *Subtle Dolly*), duration badges, and direct preservation/anti-distortion prompt guidance.
 
 ### Screenshot 9: Video Diffusion Clip Generation Studio
 - **URL / View:** `http://localhost:3000/studio` (Phase 4)

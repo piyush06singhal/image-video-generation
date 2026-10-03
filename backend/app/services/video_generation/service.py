@@ -42,6 +42,41 @@ class VideoGenerationService:
         self._concurrency_semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_GENERATIONS)
         self._active_tasks: Dict[str, asyncio.Task] = {}
 
+    async def recover_pending_jobs(self) -> None:
+        """Resume queued jobs after an API process restart."""
+        for project_dir in self.storage.projects_dir.iterdir():
+            if not project_dir.is_dir():
+                continue
+            project_id = project_dir.name
+            saved_gen = self.storage.load_generation_json(project_id) or {}
+            jobs = [GenerationJob(**j) for j in saved_gen.get("jobs", [])]
+            if not jobs:
+                continue
+            plan_data = self.storage.load_plan_json(project_id)
+            if not plan_data:
+                continue
+            plan = GenerationPlan(**plan_data)
+            scenes = {scene.scene_id: scene for scene in plan.scenes}
+            changed = False
+            for job in jobs:
+                if job.status == GenerationJobStatus.PROCESSING:
+                    job.status = GenerationJobStatus.QUEUED
+                    job.started_at = None
+                    changed = True
+                if job.status not in (GenerationJobStatus.QUEUED, GenerationJobStatus.PAUSED):
+                    continue
+                scene = scenes.get(job.scene_id)
+                if not scene or job.job_id in self._active_tasks:
+                    continue
+                if job.status == GenerationJobStatus.PAUSED:
+                    continue
+                self._active_tasks[job.job_id] = asyncio.create_task(
+                    self._execute_generation_job(project_id, job.job_id, scene)
+                )
+            if changed:
+                saved_gen["jobs"] = [job.model_dump() for job in jobs]
+                self.storage.save_generation_json(project_id, saved_gen)
+
     def _build_cinematic_prompt(
         self,
         scene: PlannedScene,
@@ -108,6 +143,9 @@ class VideoGenerationService:
             elif latest_job and latest_job.status == GenerationJobStatus.FAILED:
                 status = SceneGenerationStatus.FAILED
                 failed_count += 1
+            elif latest_job and latest_job.status == GenerationJobStatus.PAUSED:
+                status = SceneGenerationStatus.PAUSED
+                failed_count += 1
             else:
                 status = SceneGenerationStatus.PENDING
                 pending_count += 1
@@ -122,7 +160,14 @@ class VideoGenerationService:
                     status=status,
                     job_id=latest_job.job_id if latest_job else None,
                     clip=clip,
-                    last_error=latest_job.error if (latest_job and latest_job.status == GenerationJobStatus.FAILED) else None,
+                    last_error=(
+                        latest_job.error
+                        if latest_job and latest_job.status in (
+                            GenerationJobStatus.FAILED,
+                            GenerationJobStatus.PAUSED,
+                        )
+                        else None
+                    ),
                     camera_motion=scene.camera.motion_type,
                 )
             )
@@ -135,6 +180,8 @@ class VideoGenerationService:
             overall_status = ProjectGenerationStatus.GENERATING
         elif completed_count == total_scenes:
             overall_status = ProjectGenerationStatus.COMPLETED
+        elif any(scene.status == SceneGenerationStatus.PAUSED for scene in scene_summaries):
+            overall_status = ProjectGenerationStatus.PAUSED
         elif completed_count > 0 or failed_count > 0:
             overall_status = ProjectGenerationStatus.PARTIALLY_COMPLETED
         else:
@@ -176,10 +223,31 @@ class VideoGenerationService:
 
         target_scene_ids = set(request.scene_ids) if (request and request.scene_ids) else None
         force_regen = request.force_regenerate if request else False
+        if (
+            target_scene_ids is not None
+            and len(target_scene_ids) > settings.MAX_SCENES_PER_GENERATION_REQUEST
+        ):
+            raise AppException(
+                code="SCENE_REQUEST_LIMIT",
+                message=(
+                    f"You can generate at most {settings.MAX_SCENES_PER_GENERATION_REQUEST} "
+                    "scenes in one request."
+                ),
+                status_code=413,
+            )
 
         saved_gen = self.storage.load_generation_json(project_id) or {"jobs": [], "clips": []}
         saved_clips = {c["scene_id"]: VideoClipMetadata(**c) for c in saved_gen.get("clips", [])}
         jobs_list = [GenerationJob(**j) for j in saved_gen.get("jobs", [])]
+        active_scene_ids = {
+            job.scene_id
+            for job in jobs_list
+            if job.status in (
+                GenerationJobStatus.QUEUED,
+                GenerationJobStatus.PROCESSING,
+                GenerationJobStatus.PAUSED,
+            )
+        }
 
         scenes_to_launch: List[PlannedScene] = []
         for scene in plan.scenes:
@@ -192,6 +260,9 @@ class VideoGenerationService:
             )
             if clip_exists and not force_regen:
                 logger.info(f"Reusing existing completed clip for scene {scene.scene_id}")
+                continue
+            if scene.scene_id in active_scene_ids:
+                logger.info(f"Skipping scene {scene.scene_id}: an existing job is already active or paused.")
                 continue
 
             scenes_to_launch.append(scene)
@@ -330,10 +401,16 @@ class VideoGenerationService:
 
             except AppException as ae:
                 logger.error(f"Generation job {job_id} failed with AppException: {ae.code} - {ae.message}")
+                job_status = (
+                    GenerationJobStatus.PAUSED
+                    if ae.code in {"PROVIDER_RATE_LIMIT", "AI_RATE_LIMIT"}
+                    and any(term in ae.message.lower() for term in ("quota", "rate limit", "resource exhausted"))
+                    else GenerationJobStatus.FAILED
+                )
                 self._update_job_status(
                     project_id,
                     job_id,
-                    status=GenerationJobStatus.FAILED,
+                    status=job_status,
                     completed_at=datetime.now(timezone.utc).isoformat(),
                     error=ae.message,
                     error_code=ae.code,
@@ -425,6 +502,8 @@ class VideoGenerationService:
                 message=f"Job '{job_id}' has reached the maximum allowed retry limit ({settings.MAX_GENERATION_RETRIES}).",
                 status_code=400,
             )
+        if target_job.status in (GenerationJobStatus.QUEUED, GenerationJobStatus.PROCESSING):
+            return target_job
 
         plan = walkthrough_planner.get_or_create_plan(project_id)
         target_scene = next((s for s in plan.scenes if s.scene_id == target_job.scene_id), None)

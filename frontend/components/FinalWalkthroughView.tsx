@@ -15,7 +15,6 @@ import {
   Layers,
   Sparkles,
   AlertTriangle,
-  CheckCircle2,
   Loader2,
   ArrowLeft,
   Volume2,
@@ -24,7 +23,6 @@ import {
   Settings2,
   Check,
   Compass,
-  FileText,
 } from "lucide-react";
 
 interface FinalWalkthroughViewProps {
@@ -81,7 +79,10 @@ export function FinalWalkthroughView({
   }, [projectId]);
 
   useEffect(() => {
-    fetchStatus();
+    const timeoutId = window.setTimeout(() => {
+      void fetchStatus();
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
   }, [fetchStatus]);
 
   // Polling while assembly is running

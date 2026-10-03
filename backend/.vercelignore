@@ -1,0 +1,9 @@
+venv/
+tests/
+test_images/
+storage/projects/*
+storage/uploads/*
+storage/processed/*
+.env
+__pycache__/
+*.pyc

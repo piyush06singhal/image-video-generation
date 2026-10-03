@@ -10,6 +10,7 @@ from app.core.errors import AppException
 from app.core.logging import logger
 from app.schemas.common import ApiResponse
 from app.services.storage_service import storage_service
+from app.services.video_generation import video_generation_service
 
 
 @asynccontextmanager
@@ -17,6 +18,7 @@ async def lifespan(app: FastAPI):
     # Startup: Ensure storage paths are initialized
     storage_service.init_storage()
     logger.info(f"Initialized storage at: {settings.STORAGE_DIR}")
+    await video_generation_service.recover_pending_jobs()
     yield
     # Shutdown logic if needed in later phases
 

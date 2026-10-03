@@ -23,7 +23,7 @@ This document contains 26 core technical questions and precise, grounded answers
 **Answer:** Real estate photographs are typically captured and uploaded in arbitrary order. Random video concatenation causes spatial disorientation (e.g. jumping from a bathroom directly to an exterior driveway, then to a kitchen). Topological ordering ensures a natural, logical progression from exterior entrance to central living areas and private quarters.
 
 ### 6. How does the system understand the uploaded images?
-**Answer:** The system uses vision-language model inference via Google Gemini 2.5 Flash (`scene_analysis_service.py`), which analyzes each photograph to extract spatial classification, lighting conditions, architectural features, visible doorways, and quality metrics.
+**Answer:** The system uses vision-language model inference via Google Gemini 2.5 Flash (`backend/app/services/scene_analyzer/gemini_provider.py`), which analyzes each photograph to extract spatial classification, lighting conditions, architectural features, visible doorways, and quality metrics.
 
 ### 7. Which component performs scene understanding?
 **Answer:** The `SceneAnalysisService` interfacing with the Google GenAI SDK (`gemini-2.5-flash`), supplemented by Pillow-based image preprocessing (`ImagePreprocessor`) for sharpness, illumination, and contrast analysis.
@@ -36,10 +36,10 @@ This document contains 26 core technical questions and precise, grounded answers
 `exterior_front` → `entrance_foyer` → `living_room` / `dining_room` → `kitchen` → `hallway_corridor` / `stairs` → `master_bedroom` / `bedroom` → `bathroom` → `balcony_terrace` / `backyard_garden`.
 
 ### 10. How is camera motion selected?
-**Answer:** The `CameraMotionPlanner` (`walkthrough_planner/camera.py`) maps room categories to restrained, realistic trajectories (e.g. Slow Forward for foyers/living rooms, Gentle Pan Left/Right for kitchens, Subtle Dolly for bedrooms, Static Subtle Drift for bathrooms). It injects strict negative safety constraints to prevent jarring rotations or warping.
+**Answer:** The `CameraMotionPlanner` maps room categories to restrained, realistic trajectories (e.g. Slow Forward for foyers/living rooms, Gentle Pan Left/Right for kitchens, Subtle Dolly for bedrooms, Static Subtle Drift for bathrooms). The Veo 3.1 prompt uses direct preservation and anti-distortion constraints to reduce jarring rotations or warping.
 
 ### 11. What is the role of the image-to-video model?
-**Answer:** The generative diffusion model (Google Gemini Veo 2.0 / Veo 3.1 via `video_generation/provider.py`) synthesizes short (4-second) video clips from single static photographs, applying the scripted camera motion prompts while preserving original room geometry and furniture.
+**Answer:** The generative diffusion model (Google Gemini Veo 3.1) synthesizes short (4-second) video clips from single static photographs, applying direct preservation constraints and scripted camera motion prompts while preserving original room geometry and furniture.
 
 ### 12. Why are separate clips generated for each scene?
 **Answer:** Generating individual per-scene clips isolates diffusion errors, prevents cross-room morphing artifacts, allows per-scene retry without re-rendering the entire property, and enables flexible re-ordering in the timeline.
@@ -59,7 +59,7 @@ This document contains 26 core technical questions and precise, grounded answers
 ### 16. What happens if the AI model fails or returns malformed output?
 **Answer:** The backend catches validation errors and falls back gracefully:
 - In Scene Understanding: Malformed JSON falls back to a safe default classification (`unknown`) with diagnostic warnings, and the user can manually correct it via the UI.
-- In Video Generation: Request timeouts or API errors are captured, logged, and placed in a retry queue.
+- In Video Generation: Request timeouts or transient API errors are captured, logged, and placed in the persisted generation workflow; provider quota errors pause the job rather than retrying indefinitely.
 
 ### 17. What happens if one video clip fails to generate?
 **Answer:** The assembly engine performs pre-flight verification via FFprobe. If any planned scene clip is missing or corrupted, assembly halts with a clear diagnostic message (e.g. *"Walkthrough cannot be assembled because Kitchen clip is missing"*), preventing corrupt final video exports.
@@ -77,7 +77,7 @@ This document contains 26 core technical questions and precise, grounded answers
 ### 20. How are different photo aspect ratios handled in video assembly?
 **Answer:** The walkthrough video is standardized to 16:9 widescreen format (720p/1080p). Non-16:9 source photographs (e.g. portrait 9:16 or square 1:1) are normalized using proportional letterbox padding rather than destructive cropping or optical stretching, strictly preserving authentic room geometry and architectural heights.
 
-### 21. What are the major limitations of the system?
+### 21. What future upgrades remain?
 **Answer:**
 1. Dependency on external cloud generative AI providers and active API credentials.
 2. Generative diffusion models can occasionally introduce subtle texture shimmering or lighting drift.

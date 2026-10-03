@@ -239,6 +239,15 @@ export const api = {
     );
   },
 
+  async createLocalSlideshow(
+    projectId: string
+  ): Promise<import("@/types/assembly").FinalVideoMetadata> {
+    return request<import("@/types/assembly").FinalVideoMetadata>(
+      `/api/projects/${projectId}/local-slideshow`,
+      { method: "POST" }
+    );
+  },
+
   getClipUrl(projectId: string, sceneId: string): string {
     return `${API_BASE_URL}/api/projects/${projectId}/clips/${sceneId}/file`;
   },
@@ -387,6 +396,4 @@ export const api = {
     );
   },
 };
-
-
 
