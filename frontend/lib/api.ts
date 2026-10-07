@@ -10,6 +10,7 @@ const API_BASE_URL =
 // cannot carry headers, which is why the backend leaves the /file, /download and
 // /thumbnail routes ungated.
 const API_ACCESS_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
+const NETWORK_RETRY_DELAYS_MS = [250, 750];
 
 /** True when this build was shipped with a shared API key. */
 export const hasApiKey = Boolean(API_ACCESS_KEY);
@@ -55,55 +56,65 @@ async function request<T>(
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
 
-  try {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        ...(API_ACCESS_KEY ? { "X-API-Key": API_ACCESS_KEY } : {}),
-        ...(options.headers || {}),
-      },
-    });
-
-    let json: ApiResponse<T>;
+  for (let attempt = 0; attempt <= NETWORK_RETRY_DELAYS_MS.length; attempt += 1) {
     try {
-      json = await response.json();
-    } catch {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          ...(API_ACCESS_KEY ? { "X-API-Key": API_ACCESS_KEY } : {}),
+          ...(options.headers || {}),
+        },
+      });
+
+      let json: ApiResponse<T>;
+      try {
+        json = await response.json();
+      } catch {
+        throw new ApiError(
+          "INVALID_SERVER_RESPONSE",
+          `Server returned non-JSON response with HTTP status ${response.status}.`
+        );
+      }
+
+      if (!response.ok || !json.success || json.error) {
+        const code = json.error?.code || `HTTP_${response.status}`;
+        const message =
+          json.error?.message ||
+          `Request failed with status ${response.status}: ${response.statusText}`;
+        if (response.status === 401 || code === "UNAUTHORIZED") {
+          throw new ApiError(code, `${message} ${unauthorizedHint()}`, json.error?.details);
+        }
+        throw new ApiError(code, message, json.error?.details);
+      }
+
+      return json.data as T;
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      if (attempt < NETWORK_RETRY_DELAYS_MS.length) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, NETWORK_RETRY_DELAYS_MS[attempt])
+        );
+        continue;
+      }
+
+      // Browsers intentionally hide CORS and DNS failures from JavaScript. Include
+      // the actual endpoint and origin so a deployment problem is distinguishable
+      // from a stopped FastAPI process.
+      const browserOrigin =
+        typeof window !== "undefined" ? window.location.origin : "unknown origin";
       throw new ApiError(
-        "INVALID_SERVER_RESPONSE",
-        `Server returned non-JSON response with HTTP status ${response.status}.`
+        "SERVER_UNAVAILABLE",
+        `The browser could not reach ${url} from ${browserOrigin}. ` +
+          "This is usually a CORS, API URL, or deployment configuration problem; " +
+          "verify that the Vercel build uses the Render URL and that the backend " +
+          "allows this frontend origin."
       );
     }
-
-    if (!response.ok || !json.success || json.error) {
-      const code = json.error?.code || `HTTP_${response.status}`;
-      const message =
-        json.error?.message ||
-        `Request failed with status ${response.status}: ${response.statusText}`;
-      if (response.status === 401 || code === "UNAUTHORIZED") {
-        throw new ApiError(code, `${message} ${unauthorizedHint()}`, json.error?.details);
-      }
-      throw new ApiError(code, message, json.error?.details);
-    }
-
-    return json.data as T;
-  } catch (error) {
-    if (error instanceof ApiError) {
-      throw error;
-    }
-
-    // Browsers intentionally hide CORS and DNS failures from JavaScript. Include
-    // the actual endpoint and origin so a deployment problem is distinguishable
-    // from a stopped FastAPI process.
-    const browserOrigin =
-      typeof window !== "undefined" ? window.location.origin : "unknown origin";
-    throw new ApiError(
-      "SERVER_UNAVAILABLE",
-      `The browser could not reach ${url} from ${browserOrigin}. ` +
-        "This is usually a CORS, API URL, or deployment configuration problem; " +
-        "verify that the Vercel build uses the Render URL and that the backend " +
-        "allows this frontend origin."
-    );
   }
+
+  throw new ApiError("SERVER_UNAVAILABLE", `Unable to reach ${url}.`);
 }
 
 /**
