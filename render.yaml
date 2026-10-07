@@ -52,7 +52,7 @@ services:
       - key: VIDEO_FALLBACK_TO_LOCAL
         value: "true"
       - key: AI_MODEL
-        value: gemini-2.5-flash
+        value: gemini-3.8-flash
       - key: MAX_IMAGE_SIZE_BYTES
         value: "20971520"
       - key: MAX_IMAGE_PIXELS

@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     AI_PROVIDER: str = "gemini"  # "gemini"
     GEMINI_API_KEY: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
-    AI_MODEL: str = "gemini-2.5-flash"  # default vision model
+    AI_MODEL: str = "gemini-3.8-flash"  # default vision model
     AI_REQUEST_TIMEOUT_SECONDS: float = 30.0
 
     # Image-to-Video Generation Configuration (Phase 4)

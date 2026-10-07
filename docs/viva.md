@@ -26,7 +26,7 @@ This document contains 26 core technical questions and precise, grounded answers
 **Answer:** The system uses vision-language model inference via Google Gemini 2.5 Flash (`backend/app/services/scene_analyzer/gemini_provider.py`), which analyzes each photograph to extract spatial classification, lighting conditions, architectural features, visible doorways, and quality metrics.
 
 ### 7. Which component performs scene understanding?
-**Answer:** The `SceneAnalysisService` interfacing with the Google GenAI SDK (`gemini-2.5-flash`), supplemented by Pillow-based image preprocessing (`ImagePreprocessor`) for sharpness, illumination, and contrast analysis.
+**Answer:** The `SceneAnalysisService` interfacing with the Google GenAI SDK (`gemini-3.8-flash`), supplemented by Pillow-based image preprocessing (`ImagePreprocessor`) for sharpness, illumination, and contrast analysis.
 
 ### 8. What is the role of the VLM (Vision-Language Model)?
 **Answer:** The VLM acts as an automated architectural annotator. It converts raw pixel data into structured JSON metadata describing the room category, visual fixtures, natural/artificial lighting sources, and visible inter-room connection clues.

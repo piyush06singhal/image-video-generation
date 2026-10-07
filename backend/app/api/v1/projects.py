@@ -464,11 +464,9 @@ async def assemble_project_walkthrough(
     Validates clips, normalizes resolution/framerate, applies approved transitions,
     and extracts final verified metadata.
     """
-    # Assembly is minutes of synchronous FFmpeg work: run it off the event loop or it
-    # freezes every other request, including /health, for the whole render.
-    job = await asyncio.to_thread(
-        video_assembler_service.assemble_walkthrough, project_id, request
-    )
+    # Assembly can exceed Render's request timeout. Queue it and let the client
+    # poll GET /assembly while the worker thread performs the FFmpeg pipeline.
+    job = await video_assembler_service.queue_assembly(project_id, request)
     return ApiResponse.success_response(job)
 
 

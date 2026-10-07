@@ -217,14 +217,16 @@ Creates a deterministic local image slideshow walkthrough without calling Gemini
 ## 6. Video Assembly & Delivery (Phase 5)
 
 ### `POST /api/projects/{project_id}/assemble`
-Conforms every clip to the target frame, burns optional room labels, builds intro/outro
-cards over blurred plates of the property's own photography, applies the chosen
-transitions and colour grade (with vignette/grain), synthesises a royalty-free score,
-and writes the final walkthrough MP4.
+Queues a background assembly job that conforms every clip to the target frame, burns
+optional room labels, builds intro/outro cards over blurred plates of the property's
+own photography, applies the chosen transitions and colour grade (with vignette/grain),
+synthesises a royalty-free score, and writes the final walkthrough MP4. Queueing keeps
+the request within hosted-platform timeouts; poll the assembly endpoint for progress.
 - **Body (Optional):** `{"force_reassemble": false, "render_options": null, "config": null}`
 - `render_options` (optional) is saved for the project before assembling.
 - `config` is a legacy override path. Only fields you explicitly set are applied, so an
   empty config means "use the project's render options".
+- **Response:** `AssemblyJob` with `status: "queued"` or an already active job.
 
 ### `GET /api/projects/{project_id}/assembly`
 Retrieves assembly job status.

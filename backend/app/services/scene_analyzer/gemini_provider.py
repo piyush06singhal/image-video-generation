@@ -155,16 +155,20 @@ class GeminiSceneAnalyzer(BaseSceneAnalyzer):
             f"Submitting image {image_path.name} ({len(img_bytes)} bytes) to vision model for scene understanding"
         )
 
-        # Gemini 1.5 model IDs are no longer available on the v1beta endpoint.
-        # Keep older .env files working by translating that retired default to the
-        # current supported flash model instead of retrying a guaranteed 404.
+        # Older Gemini model IDs are retired on the v1beta endpoint. Keep older
+        # deployments working by translating known retired defaults before trying
+        # the current supported flash model.
         configured_model = self.model_name.strip()
-        if configured_model == "gemini-1.5-flash":
-            configured_model = "gemini-2.5-flash"
+        if configured_model in {
+            "gemini-1.5-flash",
+            "gemini-2.0-flash",
+            "gemini-2.5-flash",
+        }:
+            configured_model = "gemini-3.8-flash"
 
         # Fallback candidate models in priority order to overcome transient quota
         # or availability issues without including retired model IDs.
-        candidate_models = [configured_model, "gemini-2.5-flash", "gemini-2.0-flash"]
+        candidate_models = [configured_model, "gemini-3.8-flash"]
         # Deduplicate while preserving order
         candidate_models = list(dict.fromkeys([m for m in candidate_models if m]))
 

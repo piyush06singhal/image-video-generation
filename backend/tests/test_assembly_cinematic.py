@@ -6,6 +6,7 @@ a previously rendered cut from silently surviving a settings change.
 """
 
 from pathlib import Path
+import time
 
 import cv2
 import numpy as np
@@ -274,7 +275,12 @@ def test_api_can_assemble_with_options_end_to_end():
 
     assembled = client.post(f"/api/projects/{pid}/assemble", json={"force_reassemble": True})
     assert assembled.status_code == 200
-    data = assembled.json()["data"]["result"]
+    for _ in range(120):
+        status = client.get(f"/api/projects/{pid}/assembly").json()["data"]
+        if status["status"] == "completed":
+            break
+        time.sleep(0.1)
+    data = status["result"]
     assert (data["width"], data["height"]) == (720, 1280)
     assert data["render_options"]["preset"] == "modern_minimal"
     assert data["audio_enabled"] is False

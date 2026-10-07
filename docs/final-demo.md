@@ -18,7 +18,7 @@ CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 
 AI_PROVIDER=gemini
 GEMINI_API_KEY=your_gemini_api_key_here
-AI_MODEL=gemini-2.5-flash
+AI_MODEL=gemini-3.8-flash
 
 VIDEO_PROVIDER=gemini_veo
 VIDEO_API_KEY=your_gemini_api_key_here

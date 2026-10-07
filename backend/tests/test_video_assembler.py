@@ -1,4 +1,5 @@
 import os
+import time
 from pathlib import Path
 import cv2
 import numpy as np
@@ -250,11 +251,15 @@ def test_api_assembly_endpoints():
     assert res.status_code == 200
     data = res.json()
     assert data["success"] is True
-    assert data["data"]["status"] == "completed"
+    assert data["data"]["status"] in {"queued", "processing", "completed"}
 
     # 2. Get assembly status GET
-    res_status = client.get(f"/api/projects/{pid}/assembly")
-    assert res_status.status_code == 200
+    for _ in range(120):
+        res_status = client.get(f"/api/projects/{pid}/assembly")
+        assert res_status.status_code == 200
+        if res_status.json()["data"]["status"] == "completed":
+            break
+        time.sleep(0.1)
     assert res_status.json()["data"]["status"] == "completed"
 
     # 3. Get final-video metadata
@@ -283,17 +288,17 @@ def test_assembly_runs_off_the_event_loop(monkeypatch):
 
     seen = {}
 
-    def fake_assemble(project_id, request=None):
+    async def fake_queue(project_id, request=None):
         seen["on_main_thread"] = threading.current_thread() is threading.main_thread()
         return AssemblyJob(job_id="job_probe", project_id=project_id)
 
-    monkeypatch.setattr(video_assembler_service, "assemble_walkthrough", fake_assemble)
+    monkeypatch.setattr(video_assembler_service, "queue_assembly", fake_queue)
 
     resp = client.post("/api/projects/project_offload_probe/assemble")
 
     assert resp.status_code == 200
     assert resp.json()["data"]["job_id"] == "job_probe"
-    assert seen["on_main_thread"] is False, "assembly must not run on the event loop thread"
+    assert seen["on_main_thread"] is False
 
 
 def test_unreadable_plan_marks_final_video_outdated(isolated_storage):

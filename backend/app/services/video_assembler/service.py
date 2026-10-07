@@ -1,4 +1,5 @@
 import hashlib
+import asyncio
 import shutil
 import uuid
 from datetime import datetime, timezone
@@ -55,7 +56,58 @@ class VideoAssemblerService:
 
     def __init__(self, storage=None):
         self._jobs: Dict[str, AssemblyJob] = {}
+        self._assembly_tasks: Dict[str, asyncio.Task] = {}
         self.storage = storage or storage_service
+
+    async def queue_assembly(
+        self, project_id: str, request: Optional[AssemblyRequest] = None
+    ) -> AssemblyJob:
+        """Start assembly outside the HTTP request so Render can keep polling it."""
+        active = [
+            job
+            for job in self._jobs.values()
+            if job.project_id == project_id
+            and job.status in (AssemblyJobStatus.QUEUED, AssemblyJobStatus.PROCESSING)
+        ]
+        if active:
+            return max(active, key=lambda job: job.created_at)
+
+        job = AssemblyJob(
+            job_id=f"job_assembly_{uuid.uuid4().hex[:10]}",
+            project_id=project_id,
+            status=AssemblyJobStatus.QUEUED,
+            stage=AssemblyProgressStage.VALIDATING,
+            stage_message="Assembly queued; validating required scene clips...",
+            progress_percentage=0,
+        )
+        self._jobs[job.job_id] = job
+        self.storage.save_assembly_json(project_id, job.model_dump(mode="json"))
+        self._assembly_tasks[job.job_id] = asyncio.create_task(
+            asyncio.to_thread(self._run_queued_assembly, project_id, request, job.job_id)
+        )
+        return job
+
+    def _run_queued_assembly(
+        self,
+        project_id: str,
+        request: Optional[AssemblyRequest],
+        job_id: str,
+    ) -> AssemblyJob:
+        """Run queued assembly and persist failures that occur before the pipeline starts."""
+        try:
+            return self.assemble_walkthrough(project_id, request, _job_id=job_id)
+        except Exception as exc:
+            job = self._jobs[job_id]
+            job.status = AssemblyJobStatus.FAILED
+            job.stage = AssemblyProgressStage.FAILED
+            job.stage_message = f"Assembly failed: {exc}"
+            job.error = str(exc)
+            job.error_category = getattr(exc, "code", "ASSEMBLY_ERROR")
+            job.completed_at = datetime.now(timezone.utc).isoformat()
+            self.storage.save_assembly_json(project_id, job.model_dump(mode="json"))
+            return job
+        finally:
+            self._assembly_tasks.pop(job_id, None)
 
     # ── fingerprints ─────────────────────────────────────────────────────
     def compute_plan_fingerprint(self, plan: GenerationPlan) -> str:
@@ -219,7 +271,10 @@ class VideoAssemblerService:
 
     # ── main pipeline ────────────────────────────────────────────────────
     def assemble_walkthrough(
-        self, project_id: str, request: Optional[AssemblyRequest] = None
+        self,
+        project_id: str,
+        request: Optional[AssemblyRequest] = None,
+        _job_id: Optional[str] = None,
     ) -> AssemblyJob:
         req = request or AssemblyRequest()
         options = self._resolve_options(project_id, request)
@@ -251,17 +306,25 @@ class VideoAssemblerService:
                     result=existing_meta,
                 )
 
-        job_id = f"job_assembly_{uuid.uuid4().hex[:10]}"
-        job = AssemblyJob(
-            job_id=job_id,
-            project_id=project_id,
-            status=AssemblyJobStatus.PROCESSING,
-            stage=AssemblyProgressStage.VALIDATING,
-            stage_message="Validating required scene clips...",
-            progress_percentage=10,
-            started_at=datetime.now(timezone.utc).isoformat(),
-        )
-        self._jobs[job_id] = job
+        if _job_id and _job_id in self._jobs:
+            job_id = _job_id
+            job = self._jobs[job_id]
+            job.status = AssemblyJobStatus.PROCESSING
+            job.stage_message = "Validating required scene clips..."
+            job.progress_percentage = 10
+            job.started_at = datetime.now(timezone.utc).isoformat()
+        else:
+            job_id = f"job_assembly_{uuid.uuid4().hex[:10]}"
+            job = AssemblyJob(
+                job_id=job_id,
+                project_id=project_id,
+                status=AssemblyJobStatus.PROCESSING,
+                stage=AssemblyProgressStage.VALIDATING,
+                stage_message="Validating required scene clips...",
+                progress_percentage=10,
+                started_at=datetime.now(timezone.utc).isoformat(),
+            )
+            self._jobs[job_id] = job
 
         temp_dir = self.storage.get_project_final_dir(project_id) / f"temp_{job_id}"
         temp_dir.mkdir(parents=True, exist_ok=True)

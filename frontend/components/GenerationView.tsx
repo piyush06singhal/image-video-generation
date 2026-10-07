@@ -183,7 +183,8 @@ export function GenerationView({ projectId, onBackToPlan, onProceedToPhase5 }: G
     <div className="space-y-8 anim-fade-up">
       {/* Top Header & Overview Banner */}
       <div className="glass-gold rounded-3xl p-6 md:p-8 border border-[var(--border-2)] relative overflow-hidden shadow-2xl">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+        <div className="space-y-8 relative z-10">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex items-center gap-3">
               <button
@@ -204,6 +205,8 @@ export function GenerationView({ projectId, onBackToPlan, onProceedToPhase5 }: G
               Transforming your structured walkthrough scenes into restrained, cinematic video clips using the{" "}
               <span className="text-[var(--text-1)] font-semibold">{engine.label}</span> engine.
             </p>
+          </div>
+
           </div>
 
           {clipsOutdated && (
