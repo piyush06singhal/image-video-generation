@@ -34,7 +34,16 @@ async def health_check():
 
     # A freshly cloned checkout has no .env at all. Say so explicitly instead of
     # reporting a clean bill of health that the first real request contradicts.
-    if not data["env_files"]:
+    # Deployments that configure through real environment variables (Render,
+    # Docker, CI) deliberately have no .env file, so the file-based hint would be
+    # misleading there — only emit it when nothing was configured through either
+    # channel.
+    configured_outside_files = bool(
+        data["configured"]["ai_vision"]
+        or data["configured"]["any_remote_video_provider"]
+        or data["auth_required"]
+    )
+    if not data["env_files"] and not configured_outside_files:
         data["setup_hint"] = (
             "No environment file was found. Run `python scripts/setup_env.py` from "
             "the repository root, or copy backend/.env.example to backend/.env and "

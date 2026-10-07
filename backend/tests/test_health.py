@@ -51,10 +51,38 @@ def test_health_never_leaks_secret_values(client, monkeypatch):
     assert secret not in body
 
 
-def test_health_hints_when_no_env_file_loaded(client, monkeypatch):
+def test_health_hints_when_nothing_is_configured(client, monkeypatch):
+    """No env file AND no env-var configuration = a genuinely unconfigured checkout."""
     monkeypatch.setattr(
         type(settings), "loaded_env_files", property(lambda self: [])
     )
+    # Explicitly clear provider keys so the assertion does not depend on whatever
+    # the developer's local backend/.env happens to load.
+    for key in (
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "VIDEO_API_KEY",
+        "MAGIC_HOUR_API_KEY",
+        "JSON2VIDEO_API_KEY",
+    ):
+        monkeypatch.setattr(settings, key, None)
+
     data = client.get("/api/health").json()["data"]
     assert "setup_hint" in data
     assert "scripts/setup_env.py" in data["setup_hint"]
+
+
+def test_health_skips_file_hint_for_env_var_deployments(client, monkeypatch):
+    """Render/Docker deployments configure via env vars and have no .env by design.
+
+    Their health payload must not tell the operator to go create one.
+    """
+    monkeypatch.setattr(
+        type(settings), "loaded_env_files", property(lambda self: [])
+    )
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "env-configured")
+    monkeypatch.setattr(settings, "MAGIC_HOUR_API_KEY", "env-configured")
+
+    data = client.get("/api/health").json()["data"]
+    assert "setup_hint" not in data
+    assert data["configured"]["ai_vision"] is True
