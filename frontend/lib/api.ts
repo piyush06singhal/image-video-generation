@@ -90,11 +90,18 @@ async function request<T>(
     if (error instanceof ApiError) {
       throw error;
     }
-    // Network or connection failure
+
+    // Browsers intentionally hide CORS and DNS failures from JavaScript. Include
+    // the actual endpoint and origin so a deployment problem is distinguishable
+    // from a stopped FastAPI process.
+    const browserOrigin =
+      typeof window !== "undefined" ? window.location.origin : "unknown origin";
     throw new ApiError(
       "SERVER_UNAVAILABLE",
-      "Unable to connect to the backend server. Please verify that FastAPI is running on " +
-        API_BASE_URL
+      `The browser could not reach ${url} from ${browserOrigin}. ` +
+        "This is usually a CORS, API URL, or deployment configuration problem; " +
+        "verify that the Vercel build uses the Render URL and that the backend " +
+        "allows this frontend origin."
     );
   }
 }
@@ -522,4 +529,3 @@ export const api = {
     );
   },
 };
-

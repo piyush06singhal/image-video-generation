@@ -70,7 +70,9 @@ services:
       # allow-list would break on each branch build. This regex keeps previews
       # and production working; localhost stays in CORS_ORIGINS.
       - key: CORS_ORIGIN_REGEX
-        value: ^https://[a-z0-9-]+(\.git-[a-z0-9-]+)?\.vercel\.app$
+        value: ^https://([a-z0-9-]+\.)*vercel\.app$
+      - key: CORS_ORIGINS
+        value: https://image-video-generation-brown.vercel.app
 
       # --- Secrets: set in the Render dashboard, never in this file ---------
       # The shared API key the frontend sends as X-API-Key. Must equal
