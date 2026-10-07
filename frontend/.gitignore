@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...but the template MUST ship, or a fresh clone has no idea what to configure
+# and scripts/setup_env.py has nothing to copy from.
+!.env.example
 
 # vercel
 .vercel

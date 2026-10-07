@@ -7,8 +7,35 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000";
 
 // Sent as X-API-Key when the backend sets API_ACCESS_KEY. Media (`<img>`/`<video>`) URLs
-// cannot carry headers, which is why the backend leaves the /file routes ungated.
+// cannot carry headers, which is why the backend leaves the /file, /download and
+// /thumbnail routes ungated.
 const API_ACCESS_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
+
+/** True when this build was shipped with a shared API key. */
+export const hasApiKey = Boolean(API_ACCESS_KEY);
+
+/**
+ * Explains a 401 in terms the operator can act on.
+ *
+ * A key mismatch is the single most common cross-machine failure: the backend's
+ * `.env` is git-ignored, so a fresh clone starts with `API_ACCESS_KEY` unset on one
+ * side and set on the other. Without this hint the symptom is an opaque 401 that
+ * looks exactly like a broken server.
+ */
+function unauthorizedHint(): string {
+  if (!API_ACCESS_KEY) {
+    return (
+      `This frontend build has no NEXT_PUBLIC_API_KEY, but the backend at ${API_BASE_URL} ` +
+      "is refusing unauthenticated requests. Add NEXT_PUBLIC_API_KEY to frontend/.env.local " +
+      "with the same value as API_ACCESS_KEY in backend/.env, then restart the dev server " +
+      "(NEXT_PUBLIC_* values are inlined at build time)."
+    );
+  }
+  return (
+    "NEXT_PUBLIC_API_KEY does not match the backend's API_ACCESS_KEY. Copy the exact " +
+    "value from backend/.env into frontend/.env.local and restart the dev server."
+  );
+}
 
 export class ApiError extends Error {
   code: string;
@@ -52,6 +79,9 @@ async function request<T>(
       const message =
         json.error?.message ||
         `Request failed with status ${response.status}: ${response.statusText}`;
+      if (response.status === 401 || code === "UNAUTHORIZED") {
+        throw new ApiError(code, `${message} ${unauthorizedHint()}`, json.error?.details);
+      }
       throw new ApiError(code, message, json.error?.details);
     }
 
@@ -69,8 +99,58 @@ async function request<T>(
   }
 }
 
+/**
+ * Configuration problems the health probe can detect before the first real request.
+ *
+ * Returns human-readable, actionable sentences — or an empty array when the
+ * deployment looks coherent. Deliberately advisory: the studio still works when
+ * this returns entries.
+ */
+export function getConfigurationWarnings(
+  health: HealthStatus | null | undefined
+): string[] {
+  if (!health) return [];
+  const warnings: string[] = [];
+
+  if (health.auth_required && !hasApiKey) {
+    warnings.push(
+      `The backend at ${API_BASE_URL} requires an API key, but this build has no ` +
+        "NEXT_PUBLIC_API_KEY. Every request will be rejected with 401. Set " +
+        "NEXT_PUBLIC_API_KEY in frontend/.env.local to the same value as " +
+        "API_ACCESS_KEY in backend/.env and restart the dev server."
+    );
+  }
+
+  if (health.configured && health.configured.ai_vision === false) {
+    warnings.push(
+      "No GEMINI_API_KEY was loaded by the backend, so AI scene understanding " +
+        "(Phase 2) is unavailable. Copy backend/.env.example to backend/.env and add " +
+        "your key."
+    );
+  }
+
+  if (
+    health.video_provider === "kenburns" &&
+    health.video_provider_setting &&
+    health.video_provider_setting.toLowerCase() !== "auto" &&
+    health.video_provider_setting.toLowerCase() !== "kenburns"
+  ) {
+    warnings.push(
+      `VIDEO_PROVIDER is set to "${health.video_provider_setting}" but no usable ` +
+        "credentials were found, so clips fall back to the local renderer."
+    );
+  }
+
+  if (health.setup_hint) {
+    warnings.push(health.setup_hint);
+  }
+
+  return warnings;
+}
+
 export const api = {
   baseUrl: API_BASE_URL,
+  hasAccessKey: hasApiKey,
 
   async checkHealth(): Promise<HealthStatus> {
     return request<HealthStatus>("/api/health");
@@ -413,9 +493,19 @@ export const api = {
 
   async getTechnicalReportText(projectId: string): Promise<string> {
     const url = `${API_BASE_URL}/api/projects/${projectId}/report/text`;
-    const res = await fetch(url);
+    // Raw fetch because the payload is plain text, but it still has to carry the
+    // shared key — this route is not one of the media exemptions, so an
+    // unauthenticated call 401s in any keyed deployment.
+    const res = await fetch(url, {
+      headers: API_ACCESS_KEY ? { "X-API-Key": API_ACCESS_KEY } : {},
+    });
     if (!res.ok) {
-      throw new Error("Failed to fetch text report");
+      throw new ApiError(
+        res.status === 401 ? "UNAUTHORIZED" : `HTTP_${res.status}`,
+        res.status === 401
+          ? `Could not download the technical report. ${unauthorizedHint()}`
+          : `Could not download the technical report (HTTP ${res.status}).`
+      );
     }
     return res.text();
   },

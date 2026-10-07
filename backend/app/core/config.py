@@ -1,7 +1,34 @@
+import os
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from pydantic_settings import BaseSettings
 from pydantic import Field, field_validator
+
+
+# ---------------------------------------------------------------------------
+# Environment files
+# ---------------------------------------------------------------------------
+# These are ABSOLUTE paths on purpose.
+#
+# pydantic-settings resolves a relative ``env_file`` against the *process working
+# directory*. With the original ``env_file=".env"`` the backend therefore only saw
+# its keys when uvicorn happened to be launched from inside ``backend/``. Launching
+# it from the repository root (or from an IDE run configuration, or from a
+# different shell) silently produced a backend with no API keys at all — the
+# single most common reason the same commit "works on my machine" but not on a
+# fresh clone.
+#
+# ``backend/.env`` is listed last, and later files win, so a project-root ``.env``
+# supplies shared defaults that the backend file can override.
+BACKEND_DIR: Path = Path(__file__).resolve().parent.parent.parent
+PROJECT_ROOT: Path = BACKEND_DIR.parent
+
+ENV_FILES: tuple = (PROJECT_ROOT / ".env", BACKEND_DIR / ".env")
+
+
+def _running_serverless() -> bool:
+    """True when the process is a Vercel / Lambda-style ephemeral function."""
+    return bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
 
 
 class Settings(BaseSettings):
@@ -10,8 +37,13 @@ class Settings(BaseSettings):
     API_PREFIX: str = "/api"
     
     # Storage configuration
-    BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
+    BASE_DIR: Path = BACKEND_DIR
     STORAGE_DIR: Path = Field(default=None)
+
+    # True when running as an ephemeral function (Vercel), where the only writable
+    # path is /tmp and nothing survives between requests. Surfaced by /api/health
+    # so an operator can tell a permanent deployment from a demo one at a glance.
+    IS_SERVERLESS: bool = Field(default_factory=_running_serverless)
 
     # Optional shared secret for this API. When set, every /api request must present it
     # in the `X-API-Key` header (or a `key` query parameter, for clients that cannot set
@@ -21,6 +53,10 @@ class Settings(BaseSettings):
     
     # Image constraints
     MAX_IMAGE_SIZE_BYTES: int = 20 * 1024 * 1024  # 20 MB
+    # A small file can still declare an enormous canvas (a decompression bomb):
+    # decoding it allocates width*height*4 bytes, so the byte limit alone does not
+    # protect the server. Canvases above this pixel count are rejected before decode.
+    MAX_IMAGE_PIXELS: int = 40_000_000  # ~40 MP (an 8000x5000 photo)
     MAX_IMAGES_PER_PROJECT: int = 20
     MAX_ACTIVE_PROJECTS: int = 10
     MIN_IMAGE_WIDTH: int = 512
@@ -145,10 +181,26 @@ class Settings(BaseSettings):
     @field_validator("STORAGE_DIR", mode="before")
     @classmethod
     def set_storage_dir(cls, v, info):
+        """Resolves STORAGE_DIR against the backend package, never the CWD.
+
+        A relative ``STORAGE_DIR=storage`` used to be resolved against the working
+        directory, so starting the backend from the repository root wrote projects
+        to ``<repo>/storage`` while a start from ``backend/`` wrote them to
+        ``backend/storage``. Two directories, one app, and "my project vanished".
+        """
         if v is None:
-            # Default to backend/storage
-            return Path(__file__).resolve().parent.parent.parent / "storage"
-        return Path(v)
+            path = BACKEND_DIR / "storage"
+        else:
+            path = Path(v)
+            if not path.is_absolute():
+                path = BACKEND_DIR / path
+
+        # A serverless filesystem is read-only apart from /tmp, and /tmp is
+        # discarded between invocations. Redirect there so the app can still boot
+        # and serve a demo instead of crashing on mkdir.
+        if _running_serverless() and not str(path).startswith("/tmp"):
+            return Path("/tmp") / "storage"
+        return path
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
@@ -158,10 +210,55 @@ class Settings(BaseSettings):
         return v
 
     model_config = {
-        "env_file": ".env",
+        # Absolute paths: see the ENV_FILES comment at the top of this module.
+        "env_file": ENV_FILES,
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }
+
+    # ------------------------------------------------------------------
+    # Diagnostics
+    # ------------------------------------------------------------------
+    @property
+    def loaded_env_files(self) -> List[str]:
+        """Which environment files exist, as repo-relative names.
+
+        Names only — a path is a useful diagnostic, a value is a secret.
+        """
+        names: List[str] = []
+        for path in ENV_FILES:
+            if path.is_file():
+                try:
+                    names.append(str(path.relative_to(PROJECT_ROOT)))
+                except ValueError:  # pragma: no cover - outside the repository
+                    names.append(path.name)
+        return names
+
+    def configuration_report(self) -> Dict[str, Any]:
+        """Names-only summary of what this process actually loaded.
+
+        Returns booleans rather than the secret values themselves, so it is safe
+        to expose from the unauthenticated health endpoint. When a remote provider
+        looks "configured" in the UI but every clip comes back from the local
+        renderer, this report is what says why.
+        """
+        return {
+            "env_files": self.loaded_env_files,
+            "storage_dir": str(self.STORAGE_DIR),
+            "is_serverless": self.IS_SERVERLESS,
+            "auth_required": bool(self.API_ACCESS_KEY),
+            "configured": {
+                "ai_vision": bool(self.GEMINI_API_KEY or self.GOOGLE_API_KEY),
+                "any_remote_video_provider": bool(self.MAGIC_HOUR_API_KEY)
+                or bool(self.JSON2VIDEO_API_KEY and self.PUBLIC_BASE_URL)
+                or bool(self.VIDEO_API_KEY or self.GEMINI_API_KEY or self.GOOGLE_API_KEY),
+                "magic_hour": bool(self.MAGIC_HOUR_API_KEY),
+                "json2video": bool(self.JSON2VIDEO_API_KEY),
+                "json2video_source_url": bool(self.PUBLIC_BASE_URL),
+            },
+            "video_provider_setting": self.VIDEO_PROVIDER,
+            "fallback_to_local": self.VIDEO_FALLBACK_TO_LOCAL,
+        }
 
 
 settings = Settings()

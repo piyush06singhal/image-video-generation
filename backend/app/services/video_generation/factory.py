@@ -42,8 +42,8 @@ def _has_veo_credentials() -> bool:
     return bool(settings.VIDEO_API_KEY or settings.GEMINI_API_KEY or settings.GOOGLE_API_KEY)
 
 
-def _auto_primary() -> ImageToVideoProvider:
-    """Picks the best *configured* remote provider, else the local renderer.
+def _auto_primary_name() -> str:
+    """Name of the provider ``auto`` would pick for the current configuration.
 
     Fidelity comes first: both plate-based renderers (JSON2Video and the local
     Ken Burns) move a camera over the real photograph, so the property can never
@@ -52,12 +52,41 @@ def _auto_primary() -> ImageToVideoProvider:
     ``VIDEO_PROVIDER=magic_hour`` to prefer it outright.
     """
     if settings.JSON2VIDEO_API_KEY and settings.PUBLIC_BASE_URL:
-        return JSON2VideoProvider()
+        return "json2video"
     if settings.MAGIC_HOUR_API_KEY:
-        return MagicHourProvider()
+        return "magic_hour"
     if _has_veo_credentials():
-        return GeminiVeoProvider()
-    return KenBurnsProvider()
+        return "gemini_veo"
+    return "kenburns"
+
+
+def _auto_primary() -> ImageToVideoProvider:
+    """Constructs the provider ``auto`` selects (see ``_auto_primary_name``)."""
+    return {
+        "json2video": JSON2VideoProvider,
+        "magic_hour": MagicHourProvider,
+        "gemini_veo": GeminiVeoProvider,
+        "kenburns": KenBurnsProvider,
+    }[_auto_primary_name()]()
+
+
+def resolve_video_provider_name() -> str:
+    """The provider this configuration will use, without constructing it.
+
+    Exposed by ``/api/health``. Without it, a deployment whose key is missing
+    looks identical to a working one until every clip silently comes back from
+    the local renderer.
+    """
+    name = (settings.VIDEO_PROVIDER or "auto").strip().lower()
+    if name in _LOCAL_ALIASES:
+        return "kenburns"
+    if name in _VEO_ALIASES:
+        return "gemini_veo"
+    if name in _JSON2VIDEO_ALIASES:
+        return "json2video"
+    if name in _MAGIC_HOUR_ALIASES:
+        return "magic_hour"
+    return _auto_primary_name()
 
 
 def build_video_provider() -> ImageToVideoProvider:

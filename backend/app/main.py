@@ -43,19 +43,39 @@ app = FastAPI(
 # "a valid API key is required" message — which made a misconfigured key look like
 # a dead server.
 
+# Route suffixes the browser fetches without being able to send headers.
+# Keep this list in step with the media routes in app/api/v1/projects.py.
+MEDIA_PATH_SEGMENTS = frozenset(
+    {
+        "health",          # readiness probe, used before any credentials exist
+        "file",            # image / clip / final-video streaming
+        "download",        # <a download> for the final video and scene clips
+        "thumbnail",       # <img> grid thumbnails
+        "analysis-file",   # <img> scene-analysis preview
+    }
+)
+
 @app.middleware("http")
 async def api_access_key_guard(request: Request, call_next):
     """
     Gate the API behind a shared secret when API_ACCESS_KEY is configured.
 
-    Deliberately exempt:
-    * ``/health`` — the studio probes readiness before it has any credentials.
-    * paths ending in ``/file`` — media streaming. `<img>`/`<video>` cannot send headers,
-      and these routes are addressed by unguessable project/image ids. For a hardened
-      deployment, replace this with signed, expiring URLs.
-    * ``OPTIONS`` — CORS preflight must succeed before the browser sends the key.
+    Deliberately exempt are the *media* routes and the readiness probe, because
+    the browser loads them from places that cannot attach a header — an
+    ``<img src>``, a ``<video src>`` and a plain ``<a download>``. They are
+    addressed by unguessable server-generated ids, so an anonymous GET cannot
+    enumerate anything. For a hardened deployment, replace this with signed,
+    expiring URLs.
 
-    When API_ACCESS_KEY is unset the guard is a no-op, so local development is unchanged.
+    The exemption is matched on the FINAL path segment against an explicit
+    allow-list rather than with ``str.endswith``. ``endswith("/file")`` was the
+    original check and it silently missed ``/download``, ``/thumbnail`` and
+    ``/analysis-file``, so with a key configured the studio's thumbnails, the
+    immersive scene player and both download buttons all broke with a 401 while
+    every JSON call kept working.
+
+    When API_ACCESS_KEY is unset the guard is a no-op, so local development is
+    unchanged.
     """
     expected = settings.API_ACCESS_KEY
     if not expected:
@@ -65,7 +85,7 @@ async def api_access_key_guard(request: Request, call_next):
         return await call_next(request)
 
     path = request.url.path.rstrip("/")
-    if path.endswith("/health") or path.endswith("/file"):
+    if path.rsplit("/", 1)[-1] in MEDIA_PATH_SEGMENTS:
         return await call_next(request)
 
     provided = request.headers.get("X-API-Key") or request.query_params.get("key") or ""

@@ -69,3 +69,31 @@ def test_media_file_routes_stay_open(client, guarded):
     resp = client.get("/api/projects/does-not-exist/final-video/file")
     # Not 401 — the guard lets it through and the handler reports the missing project.
     assert resp.status_code != 401
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/projects/p1/final-video/download",
+        "/api/projects/p1/clips/s1/download",
+        "/api/projects/p1/images/i1/thumbnail",
+        "/api/projects/p1/images/i1/analysis-file",
+    ],
+)
+def test_browser_media_routes_stay_open(client, guarded, path):
+    """The media exemption must cover every route the browser fetches bare.
+
+    The original guard only exempted paths *ending* in ``/file``, so with a key
+    configured the studio's download buttons, the immersive scene player and the
+    image grid thumbnails all returned 401 while every JSON call kept working —
+    exactly the "keys don't work on another machine" symptom.
+    """
+    resp = client.get(path)
+    assert resp.status_code != 401, f"{path} should be exempt from the API-key guard"
+
+
+def test_non_media_paths_are_still_guarded(client, guarded):
+    """Broadening the exemption must not open the JSON API."""
+    assert client.get("/api/projects").status_code == 401
+    assert client.get("/api/projects/p1/plan").status_code == 401
+    assert client.get("/api/projects/p1").status_code == 401

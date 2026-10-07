@@ -16,7 +16,7 @@ import { ImageMetadata, StagedImage } from "@/types/image";
 import { GenerationPlan, PlanUpdateRequest } from "@/types/plan";
 import { Project } from "@/types/project";
 import { SceneType } from "@/types/scene";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, getConfigurationWarnings } from "@/lib/api";
 import { extractLocalImageDimensions, generateClientId } from "@/lib/utils";
 import {
   Upload,
@@ -84,6 +84,7 @@ export default function StudioPage() {
 
   const [isBackendHealthy, setIsBackendHealthy] = useState<boolean | null>(null);
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
+  const [configWarnings, setConfigWarnings] = useState<string[]>([]);
   const [alert, setAlert] = useState<{
     type: "error" | "success" | "warning" | "info";
     title?: string;
@@ -93,13 +94,19 @@ export default function StudioPage() {
   const [isNextPhaseModalOpen, setIsNextPhaseModalOpen] = useState(false);
 
   /* ── Health check ── */
+  // The health probe doubles as a configuration audit: it is the one endpoint that
+  // answers without a key, so it can tell us "the backend wants a key and you are
+  // not sending one" before the first upload fails with a bare 401.
   const checkHealth = useCallback(async () => {
     setIsCheckingHealth(true);
     try {
       const res = await api.checkHealth();
       setIsBackendHealthy(res?.status === "healthy");
+      const warnings = getConfigurationWarnings(res);
+      setConfigWarnings(warnings);
     } catch {
       setIsBackendHealthy(false);
+      setConfigWarnings([]);
     } finally {
       setIsCheckingHealth(false);
     }
@@ -111,9 +118,15 @@ export default function StudioPage() {
       setIsCheckingHealth(true);
       try {
         const res = await api.checkHealth();
-        if (active) setIsBackendHealthy(res?.status === "healthy");
+        if (active) {
+          setIsBackendHealthy(res?.status === "healthy");
+          setConfigWarnings(getConfigurationWarnings(res));
+        }
       } catch {
-        if (active) setIsBackendHealthy(false);
+        if (active) {
+          setIsBackendHealthy(false);
+          setConfigWarnings([]);
+        }
       } finally {
         if (active) setIsCheckingHealth(false);
       }
@@ -123,6 +136,8 @@ export default function StudioPage() {
       active = false;
     };
   }, []);
+
+  const dismissConfigWarnings = useCallback(() => setConfigWarnings([]), []);
 
   /* ── Load plan when entering phase 3 ── */
   useEffect(() => {
@@ -371,6 +386,18 @@ export default function StudioPage() {
 
       {/* Main Studio Container */}
       <main className="max-w-6xl mx-auto px-6 sm:px-8 py-10">
+        {/* Configuration warnings from the health probe (missing / mismatched keys) */}
+        {configWarnings.length > 0 && (
+          <div className="space-y-2.5 mb-6">
+            <StudioAlert
+              type="warning"
+              title={`Backend configuration needs attention (${configWarnings.length})`}
+              message={configWarnings.join(" ")}
+              onClose={dismissConfigWarnings}
+            />
+          </div>
+        )}
+
         {/* Alerts */}
         {alert && (
           <StudioAlert
