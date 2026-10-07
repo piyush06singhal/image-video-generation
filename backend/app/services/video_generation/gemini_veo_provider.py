@@ -150,11 +150,18 @@ class GeminiVeoProvider(ImageToVideoProvider):
         duration_seconds: float,
         camera_motion: str,
         output_path: Path,
+        options: Optional[Dict[str, Any]] = None,
     ) -> ProviderResult:
         """
         Submits generation request to Google GenAI Veo, polls operation until complete,
         and saves the validated output video artifact to output_path.
+
+        ``options`` is accepted for contract parity but only its duration is
+        honoured: Veo exposes no frame-size, fps or colour-grade control, so the
+        assembler applies the look and the output format afterwards. This is
+        recorded in the result metadata so the UI can be honest about it.
         """
+        options = options or {}
         if not source_image_path.exists():
             raise AppException(
                 code="SOURCE_IMAGE_ERROR",
@@ -284,7 +291,17 @@ class GeminiVeoProvider(ImageToVideoProvider):
                 provider_name=self.get_provider_name(),
                 model_name=self.get_model_name(),
                 duration_seconds=float(bounded_duration),
-                raw_metadata={"operation_name": provider_job_id},
+                raw_metadata={
+                    "operation_name": provider_job_id,
+                    # Veo ignores frame size / fps / grade; the assembler applies them.
+                    "options_applied": ["duration_seconds"],
+                    "options_ignored": [
+                        k
+                        for k in ("width", "height", "fps", "aspect_ratio", "resolution")
+                        if options.get(k) is not None
+                    ],
+                    "synthetic_pixels": True,
+                },
             )
 
         except AppException:

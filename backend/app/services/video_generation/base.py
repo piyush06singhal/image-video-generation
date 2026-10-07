@@ -30,10 +30,16 @@ class ImageToVideoProvider(ABC):
         duration_seconds: float,
         camera_motion: str,
         output_path: Path,
+        options: Optional[Dict[str, Any]] = None,
     ) -> ProviderResult:
         """
         Executes real image-to-video generation, polls asynchronous operations to completion,
         downloads the resulting video artifact, and saves it to output_path.
+
+        ``options`` carries the project's :class:`RenderOptions` as a plain dict
+        (frame size, fps, motion intensity, camera variety, scene index) so a
+        provider can honour the user's creative choices. It is optional and
+        keyword-only in practice, so providers that ignore it keep working.
         """
         pass
 

@@ -49,8 +49,8 @@ The following diagram details the end-to-end pipeline architecture, data contrac
 │                                                                                     │ Scene Metadata                   │
 │                                                                                     ▼ JSON Schemas                     │
 │   ┌───────────────────────────────────┐               ┌────────────────────────────────────────────────────────────┐   │
-│   │ Phase 4: Image-to-Video Diffusion │               │ Phase 3: Walkthrough Planning & Trajectory Graph           │   │
-│   │ • Gemini Veo 3.1 I2V Engine       │◀──────────────│ • Directed Topological Scene Graph Construction            │   │
+│   │ Phase 4: Cinematic Clip Rendering │               │ Phase 3: Walkthrough Planning & Trajectory Graph           │   │
+│   │ • Pluggable I2V Engine Selection  │◀──────────────│ • Directed Topological Scene Graph Construction            │   │
 │   │ • Prompt grounding & safety locks │ Camera Prompts│ • Hierarchy Sorting (Exterior ➔ Living ➔ Private ➔ Outdoor)│   │
 │   │ • Asynchronous execution queue    │  & Parameters │ • Conservative Camera Motion Planner (Pan/Dolly/Drift)     │   │
 │   │ • Video stream probing/verification│               │ • Plan Fingerprinting & SHA-256 Versioning                 │   │
@@ -60,9 +60,9 @@ The following diagram details the end-to-end pipeline architecture, data contrac
 │                     ▼                                                                                                  │
 │   ┌───────────────────────────────────┐               ┌────────────────────────────────────────────────────────────┐   │
 │   │ Phase 5: Normalization & Assembly │               │ Phase 6: Immersive Viewer & Evaluation Suite               │   │
-│   │ • FFmpeg Proportional Letterbox   │──────────────▶│ • 360° Spherical Equirectangular Canvas Viewer            │   │
-│   │ • 16:9 Widescreen (1280x720 24fps)│ Walkthrough   │ • 2D Ultra High-Res Bounded Pan/Zoom Mode                  │   │
-│   │ • Dynamic Dark Title Card Intro   │     Video     │ • 4-Point Automated Verification Checks                    │   │
+│   │ • FFmpeg cover-crop conform       │──────────────▶│ • 360° Spherical Equirectangular Canvas Viewer            │   │
+│   │ • Configurable aspect/res/fps     │ Walkthrough   │ • 2D Ultra High-Res Bounded Pan/Zoom Mode                  │   │
+│   │ • Branded cards, labels, score    │     Video     │ • 4-Point Automated Verification Checks                    │   │
 │   │ • Multi-Input Crossfade Concaten. │   Artifacts   │ • 6-Axis Human Evaluation & Review Flagging                │   │
 │   │ • Outdated Plan State Invalidator │               │ • Plaintext & JSON Audit Report Exporter                   │   │
 │   └───────────────────────────────────┘               └────────────────────────────────────────────────────────────┘   │
@@ -95,21 +95,91 @@ The following diagram details the end-to-end pipeline architecture, data contrac
 - **Conservative spatial scope:** Intermediate rooms omitted by the user are not added as separate planned scenes; transitions between available scenes use the configured transition.
 - **Conservative Camera Motion Selection:** Maps scene types to restrained camera trajectories (e.g. forward dolly for foyers, lateral pans for kitchens, subtle static drift for bathrooms) while using direct preservation and anti-distortion constraints in the Veo prompt. The current Veo 3.1 integration does not send a separate negative-prompt field.
 
-### Phase 4: Image-to-Video Diffusion Generation
-- **Generative Video Synthesis:** Uses Google Gemini Veo 3.1 to synthesize 4-second video clips from single static photographs guided by the scripted motion prompts and direct preservation constraints.
-- **Safety Prompt Engineering:** Uses direct preservation and anti-distortion instructions (`preserve furniture, walls, lighting, and geometry; no distortion`) to reduce structural artifacts. The current Veo 3.1 integration does not send a separate negative-prompt field.
+### Phase 4: Image-to-Video Generation
+- **Pluggable Provider Architecture:** `VIDEO_PROVIDER` selects the motion engine at runtime (`auto` | `json2video` | `gemini_veo` | `kenburns`). Providers share one contract, so the pipeline is identical regardless of engine.
+- **Generative Video Synthesis (Veo):** Google Gemini Veo 3.1 synthesizes 4-second clips from single static photographs guided by the scripted motion prompts and direct preservation constraints. Safety prompt engineering uses direct preservation and anti-distortion instructions (`preserve furniture, walls, lighting, and geometry; no distortion`) to reduce structural artifacts. The current Veo 3.1 integration does not send a separate negative-prompt field.
+- **Local Cinematic Motion (Ken Burns):** Renders a genuine camera move — pan, push-in, pull-back, subtle drift — over the *real* photograph using a sub-pixel affine "virtual camera" in OpenCV and FFmpeg. Runs on CPU with no API, no quota and no cost, and is deterministic, so the property can never be hallucinated or refurnished.
+- **Cloud Rendering (JSON2Video):** Composites the real photos with pan/zoom, easing and cross-dissolves through the JSON2Video rendering API — generous free tier (600s of rendered output) and no local GPU/CPU load. Requires `JSON2VIDEO_API_KEY` and a publicly reachable `PUBLIC_BASE_URL`, because the renderer downloads each source photo by URL.
+- **Graceful Degradation:** Any remote provider that is rate-limited, out of quota, content-blocked, timed out or misconfigured automatically falls back to the local renderer, so a walkthrough is always produced.
 - **Video Stream Verification:** Probes and decodes each generated clip before assembly to confirm it is readable and has expected metadata such as codec, resolution, and frame rate.
 
 ### Phase 5: Video Normalization & Multi-Clip Assembly
-- **Proportional Geometric Letterboxing:** Normalizes source photos of arbitrary aspect ratios ($9:16$ portrait, $1:1$ square, $4:3$) to standardized $16:9$ widescreen ($1280\times 720$ at $24.0\text{ fps}$) without optical stretching or cropping.
-- **Dynamic Title Card Generation:** Renders a sleek obsidian-and-gold property title card intro using OpenCV and H.264 transcoding.
-- **Transition Stitching:** Executes straight cuts or smooth crossfades ($0.35\text{s}$) using multi-input FFmpeg `filter_complex` graphs.
-- **Plan Invalidation Tracking:** Compares plan SHA-256 hashes against current scene configurations to flag outdated video assemblies.
+- **Frame Conforming:** Every clip is *cover-cropped* (scaled to fill, centre-cropped) to the project's exact target frame, so no black bars ever survive into the delivered video. The target is `aspect_ratio × resolution` (for example `9:16` at `720p` → $720\times 1280$) rather than a fixed $1920\times 1080$ canvas, and the frame rate is configurable ($24/30/60$).
+- **Branded Intro & Outro Cards:** Renders opening and closing cards over a blurred, slowly drifting plate taken from the property's own photography, with gold-rule typography — rather than the flat black card this used to emit.
+- **Room Label Overlays:** Burns a fading lower-third room name onto each scene clip so viewers always know which space they are looking at.
+- **Cinematic Grade:** Applies the chosen colour treatment (warm luxury / cool modern / cinematic teal / noir) plus optional vignette and film grain in a single encode pass, so photographs read as footage.
+- **Transition Stitching:** Executes the selected transition between every pair of shots — straight cut, cross dissolve, fade-through-black, slide or wipe — at the configured duration, using multi-input FFmpeg `xfade` graphs. If the transition graph fails the render degrades to straight cuts and logs it loudly rather than silently pretending nothing happened.
+- **Royalty-Free Score:** Synthesises a background bed from sine partials with a slow amplitude swell, low-pass, echo and matched fades — nothing is downloaded and nothing is licensed. A score failure degrades to a silent cut instead of failing the render.
+- **Honest Output Metadata:** The final metadata reports the audio codec actually present in the container and the render-options fingerprint used, instead of hardcoding `audio_codec: null`.
+- **Invalidation Tracking:** Compares the plan SHA-256 hash *and* the render-options fingerprint against the assembled result, so changing the look (or the plan) flags the existing MP4 as outdated — and reverting to the settings a cut was built with makes it valid again.
 
 ### Phase 6: Immersive Viewer & Technical Evaluation
 - **Dual-Mode Inspection:** Interactive HTML5 Canvas equirectangular spherical viewer for 360° panoramas and bounded high-res 2D pan/zoom for perspective photos.
 - **Automated Verification Matrix:** Non-subjective server-side checks for scene analysis completion, clip availability, video stream integrity, and plan synchronization.
 - **Standardized Human Evaluation:** 6-axis scoring rubric ($1.0$ to $5.0$) paired with scene-level defect flags (`geometry_distortion`, `flickering`, `unnatural_motion`, etc.) and exportable technical audit reports.
+
+---
+
+## Cinematic Render Options
+
+One persisted, per-project configuration (`render_options.json`) controls how a walkthrough
+looks, and both Phase 4 and Phase 5 read it, so a regenerate/reassemble reproduces the same
+style without re-sending the form.
+
+| Area | Controls |
+| :--- | :--- |
+| **Output frame** | Aspect ratio (`16:9` / `9:16` / `1:1`), quality tier (`720p` / `1080p` / `1440p`), frame rate (`24` / `30` / `60`) |
+| **Pacing & motion** | Seconds per room, motion intensity (subtle / balanced / bold), per-room camera variety |
+| **Depth & realism** | 2.5D depth parallax, motion blur |
+| **Transitions** | Style (hard cut / cross dissolve / motion dissolve / blur dissolve / fade-through-black / slide / wipe) and duration |
+| **Titles & overlays** | Intro card (+ custom headline and length), outro card, burned-in room labels, room counter & tour progress, brand mark |
+| **Look** | Colour grade (warm luxury / golden hour / cool modern / cinematic teal / noir), vignette, film grain, highlight halation, cinematic bars |
+| **Score** | Enable/disable, mood (ambient / uplifting / minimal piano), level. Every cut carries a synthesised whoosh, the first shot a riser, the end card a button |
+
+Five built-in presets (`cinematic_luxury`, `modern_minimal`, `energetic_reel`,
+`documentary_tour`, `quick_draft`) apply a coherent set of values in one click; individual
+controls can then be adjusted. The studio exposes all of this in a **Cinematic Settings**
+panel in Phase 4 and Phase 5, and the API mirrors it (`GET`/`PATCH
+/api/projects/{id}/render-options`, `GET /api/projects/render-options/presets`).
+
+Changing an option that reshapes the clips (length, frame shape, fps, motion) marks the
+existing clips stale so they are regenerated on the next generate; changing a look-only
+option marks the assembled video outdated so it is reassembled. Both are reported to the UI
+rather than applied silently.
+
+---
+
+## Production Value
+
+A camera move over a photograph looks like a slideshow unless the shot carries the cues a
+real camera produces. The engine builds those cues explicitly.
+
+| Feature | What it does | Why it matters |
+| :--- | :--- | :--- |
+| **2.5D depth parallax** | A monocular depth model (Depth Anything V2 Small, ONNX, run locally) estimates how far away each pixel is; the virtual camera then moves near pixels further than far ones | Without it, everything in the frame moves as one rigid sheet — which is exactly the effect users read as “a panning photo”. Measured on a real room: near-plane motion 16 px vs far-plane 3 px, against 9 px vs 6 px for the flat camera |
+| **Motion blur** | Frames are accumulated over a trailing shutter window | Real footage blurs during fast movement; it is one of the strongest “this is a camera, not a still” cues |
+| **Kinetic title cards** | The headline arrives with loose letter-spacing that tightens, the gold rule wipes outward, a soft light sweep crosses the plate, and the whole card fades up from black | A static card with text on it reads as a JPEG; this reads as a title sequence |
+| **Animated lower-thirds** | Room name slides into place, with a position counter (“03 / 08”) and a gold tour-progress line | Tells a viewer where they are in the property, which is most of what separates a listing clip from a home video |
+| **Highlight halation** | Only pixels above a measured gate feed the glow, which is a tight vertical blur smeared wide horizontally and screened back — the anamorphic bleed of a fast lens | The previous version screened a blurred copy of the *whole* frame, which left the picture ~30% softer than the source photograph and lifted the shadows into haze. Measured on a real 1080p interior: detail **19.0** without it, **17.5** with it, and **10.5** for the version it replaced; shadow floor 15 → 17, against **46** for the version it replaced |
+| **Filmic colour** | `curves` gives a per-channel tonal shape — shadows lifted off true black, mids separated, highlights rolled off below clipping — plus split-toning and `vibrance` | The old grade darkened a well-exposed interior by ~30 luma levels and crushed 2% of the frame to black. A frame that is dimmer, with black corners and black bars, is exactly what reads as *diluted* |
+| **Composed score** | A small procedural composer writes chords, a bass line, an arpeggio, soft percussion and a Schroeder reverb tail, then loudness-normalises | The score used to be a single held drone with no pulse. A bed with movement is what makes the cut feel produced |
+| **Sound design on the cuts** | A synthesised whoosh lands on every transition, a riser on the first shot, a low button on the end card — mixed from the assembly's own cut positions | Music alone does not make an edit feel produced. Measured on a finished cut: the five noisiest moments in the whole mix are exactly the five cuts, 21–30× the median spectral flatness |
+| **Continuous camera** | The ease compressed into the middle of a shot used to park the camera for the first and last tenth of every clip, so the cut read stop-start. Motion now begins almost at once and bleeds off speed, with a two-tone handheld float instead of a single periodic sway | A perfectly periodic wobble reads as machine motion; a stalled camera next to a crossfade reads as a slideshow |
+
+Everything here is generated locally and deterministically: no licensed audio, no stock
+footage and no per-render cost. The depth model is fetched once (see the install section) and
+is deliberately **not** committed, since it is ~100 MB. If it is missing, or `onnxruntime` is
+unavailable, the renderer falls back to a flat camera move instead of failing — so the
+pipeline still produces a walkthrough out of the box.
+
+**Honest limitations.** The score is procedurally composed, not a licensed recording. The
+`kenburns` and `json2video` engines move a camera over the real photograph, so there is no
+newly generated footage — motion is a cinematic camera move with real parallax, not a walk
+into the room, and there are no people; only `gemini_veo` synthesises pixels, and it can
+invent furniture. `gemini_veo` ignores frame size, frame rate and grade (the assembler
+applies those afterwards). Depth is monocular, so extreme close-ups can smear at the
+disocclusion between planes; `json2video` needs a publicly reachable `PUBLIC_BASE_URL` so its
+renderers can fetch the source photos, and its cloud canvas is clamped to Full HD.
 
 ---
 
@@ -121,7 +191,8 @@ To maintain scientific integrity and realistic evaluation bounds, CinéEstate op
 | :--- | :--- |
 | **Topological Graph vs. 3D Reconstruction** | Constructs a topological scene graph rather than attempting dense Structure-from-Motion (SfM), NeRF, or 3D Gaussian Splatting (3DGS). This avoids metric reconstruction, but output quality still depends on the number, coverage, and quality of uploaded photographs. |
 | **Conservative spatial scope** | The system plans and renders uploaded scenes only. It does not generate separate clips for unphotographed intermediate rooms; provider-generated motion can still contain visual artifacts. |
-| **Authentic Aspect Ratio Preservation** | Non-16:9 photographs are letterboxed rather than cropped to fill, preserving authentic ceiling heights, floor layouts, and vertical wall geometry. |
+| **Generative vs. Plate-Based Motion** | Diffusion providers (`gemini_veo`) synthesize pixels and can therefore drift from the listing — invented furniture, warped geometry, changed finishes. Plate-based providers (`json2video`, `kenburns`) move a virtual camera over the real photograph, so the result is pixel-exact by construction. Accuracy and "wow factor" are a trade-off the operator selects with `VIDEO_PROVIDER`. |
+| **Aspect Ratio: Fill vs Preserve** | The *video* pipeline cover-crops to the requested frame so output never contains black bars — the right choice for a vertical reel, at the cost of cropping landscape photographs. The *viewer* (Phase 6) preserves full source geometry. Choose `16:9` to retain the whole frame; a `9:16` render from landscape photographs is a deliberate centre crop. |
 | **Equirectangular Projection Boundaries** | True 360° equirectangular panoramas are projected onto a spherical canvas; standard perspective photos remain in 2D to prevent false spherical warping. |
 
 ---
@@ -218,6 +289,21 @@ The application is designed to remain usable when Gemini/Veo free-tier capacity 
 - Users can select only the scenes they need to generate.
 - A local image-slideshow fallback can create a valid walkthrough without a video API call.
 
+**Choosing a provider.** The free-tier wall is a *provider* problem, not a pipeline
+problem, so Phase 4 is swappable:
+
+| `VIDEO_PROVIDER` | Motion source | Cost / limits | Property accuracy |
+| :--- | :--- | :--- | :--- |
+| `gemini_veo` | Generative diffusion (Veo) | Hardest free tier; 1 request at a time | Diffusion can invent furniture, geometry and finishes |
+| `json2video` | Cloud render of the real photos (pan/zoom + transitions) | Free tier ≈ 600s of render | Exact — pixels are the actual listing |
+| `kenburns` | Local render of the real photos (OpenCV + FFmpeg) | Free, unlimited, offline | Exact — pixels are the actual listing |
+| `auto` (default) | Best configured remote, local fallback | — | Degrades rather than failing |
+
+Run `VIDEO_PROVIDER=kenburns` for a fully offline walkthrough with zero API calls, or
+set `JSON2VIDEO_API_KEY` + `PUBLIC_BASE_URL` to offload rendering to the cloud. In
+`auto` mode a quota, rate-limit, content-block or misconfiguration error degrades the
+affected clip to the local renderer instead of failing the job.
+
 Free-tier quotas are provider-controlled and cannot guarantee unlimited or immediate video generation. See [`docs/future-upgrades.md`](docs/future-upgrades.md) before onboarding multiple users.
 
 ---
@@ -227,6 +313,11 @@ Free-tier quotas are provider-controlled and cannot guarantee unlimited or immed
 ```bash
 # Navigate to backend directory
 cd backend
+
+# Fetch the local depth model used for 2.5D parallax (~100MB, not committed)
+mkdir -p models
+curl -L -o models/depth_anything_v2_small.onnx \
+  https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model.onnx
 
 # Create and activate Python virtual environment
 python3 -m venv venv
@@ -277,6 +368,10 @@ cd backend
 ```
 
 The exact test count and timing depend on the current checkout. The command above is the source of truth.
+
+Note: `API_ACCESS_KEY` is a *deployment* guard read from `backend/.env`. The test suite
+neutralises it by default so a developer's local key does not turn every API test into a
+401; `tests/test_api_access_key.py` opts back in explicitly to cover the guard itself.
 
 To run the frontend production build verification:
 ```bash

@@ -3,6 +3,8 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
+from app.schemas.render_options import RenderOptions
+
 
 class AssemblyJobStatus(str, Enum):
     QUEUED = "queued"
@@ -50,6 +52,13 @@ class FinalVideoMetadata(BaseModel):
     scenes_in_order: List[AssembledSceneInfo] = Field(default_factory=list, description="Ordered scene breakdown")
     plan_version: int = Field(default=1, description="Generation plan version used for assembly")
     plan_hash: str = Field(..., description="Cryptographic fingerprint of the source plan")
+    render_options_hash: Optional[str] = Field(
+        default=None,
+        description="Fingerprint of the render options used to build this cut",
+    )
+    render_options: Optional[RenderOptions] = Field(
+        default=None, description="Creative settings that produced this cut"
+    )
     is_outdated: bool = Field(default=False, description="True if generation plan was edited after assembly")
     created_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(),
@@ -58,17 +67,29 @@ class FinalVideoMetadata(BaseModel):
 
 
 class AssemblyConfig(BaseModel):
-    intro_title_enabled: bool = Field(default=True, description="Whether to include a short 1-2s title card intro")
-    intro_duration_seconds: float = Field(default=1.5, ge=0.5, le=4.0, description="Intro duration in seconds")
-    crossfade_duration_seconds: float = Field(default=0.35, ge=0.2, le=1.0, description="Crossfade duration if used")
-    audio_enabled: bool = Field(default=False, description="Whether to add subtle background music")
-    audio_volume: float = Field(default=0.25, ge=0.0, le=1.0, description="Audio volume scale")
-    output_fps: float = Field(default=24.0, description="Target output framerate")
+    """Legacy assembly overrides.
+
+    Superseded by :class:`RenderOptions`, which the assembler now reads from the
+    project. Only fields the caller explicitly sets are applied, so an empty
+    ``config`` means "whatever the project's render options say". Kept so existing
+    clients that post a config keep working.
+    """
+
+    intro_title_enabled: Optional[bool] = Field(None, description="Whether to include a title card intro")
+    intro_duration_seconds: Optional[float] = Field(None, ge=0.5, le=6.0, description="Intro duration in seconds")
+    crossfade_duration_seconds: Optional[float] = Field(None, ge=0.2, le=2.0, description="Transition duration")
+    audio_enabled: Optional[bool] = Field(None, description="Whether to add background music")
+    audio_volume: Optional[float] = Field(None, ge=0.0, le=1.0, description="Music volume scale")
+    output_fps: Optional[float] = Field(None, description="Target output framerate")
     output_resolution: Optional[str] = Field(None, description="e.g. 1280x720 or 1920x1080")
 
 
 class AssemblyRequest(BaseModel):
-    config: Optional[AssemblyConfig] = Field(default_factory=AssemblyConfig, description="Assembly configuration")
+    config: Optional[AssemblyConfig] = Field(default_factory=AssemblyConfig, description="Legacy assembly overrides")
+    render_options: Optional[RenderOptions] = Field(
+        default=None,
+        description="Creative settings to save for this project before assembling",
+    )
     force_reassemble: bool = Field(default=False, description="Force reassembly even if a valid final video exists")
 
 

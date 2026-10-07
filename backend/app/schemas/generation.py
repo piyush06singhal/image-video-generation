@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 from app.schemas.plan import CameraMotionType
+from app.schemas.render_options import RenderOptions
 
 
 class GenerationJobStatus(str, Enum):
@@ -58,6 +59,13 @@ class VideoClipMetadata(BaseModel):
         description="ISO 8601 generation completion timestamp",
     )
     quality: QualityAssessment = Field(default=QualityAssessment.ACCEPTABLE, description="Automated quality check status")
+    render_signature: Optional[str] = Field(
+        default=None,
+        description=(
+            "Fingerprint of the render options this clip was generated with; a mismatch "
+            "with the project's current options means the clip must be regenerated"
+        ),
+    )
 
 
 class GenerationJob(BaseModel):
@@ -102,6 +110,21 @@ class ProjectGenerationOverview(BaseModel):
     failed_scenes: int = Field(default=0, description="Count of failed scenes")
     pending_scenes: int = Field(default=0, description="Count of pending scenes")
     total_duration_seconds: float = Field(default=0.0, description="Total duration of completed clips in seconds")
+    # Engine actually configured for this run. Compared against each clip's `provider`
+    # this reveals when a clip was produced by the local fallback instead of the
+    # primary engine (a quota or configuration degradation).
+    active_provider: Optional[str] = Field(default=None, description="Canonical name of the configured image-to-video provider")
+    active_model: Optional[str] = Field(default=None, description="Model name of the configured image-to-video provider")
+    render_options: Optional[RenderOptions] = Field(
+        default=None, description="Creative settings this project will render with"
+    )
+    clips_outdated: bool = Field(
+        default=False,
+        description=(
+            "True when completed clips were rendered with different settings "
+            "(duration / resolution / motion) than the project now specifies"
+        ),
+    )
     scenes: List[SceneGenerationSummary] = Field(default_factory=list, description="List of scene generation statuses")
     active_jobs: List[GenerationJob] = Field(default_factory=list, description="Active or recent generation jobs")
 
@@ -109,6 +132,10 @@ class ProjectGenerationOverview(BaseModel):
 class GenerateRequest(BaseModel):
     scene_ids: Optional[List[str]] = Field(None, description="Specific scene IDs to generate; if omitted, generates all eligible scenes")
     force_regenerate: bool = Field(default=False, description="Whether to re-generate already completed clips")
+    render_options: Optional[RenderOptions] = Field(
+        default=None,
+        description="Optional creative settings to save for this project before generating clips",
+    )
 
 
 class RegenerateSceneRequest(BaseModel):

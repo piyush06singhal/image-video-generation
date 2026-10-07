@@ -21,9 +21,11 @@ from app.schemas.generation import (
 )
 from app.schemas.plan import CameraMotionType, GenerationPlan, PlannedScene
 from app.schemas.project import ProjectStatus
+from app.schemas.render_options import RenderOptions
+from app.services.render_options_service import render_options_service
 from app.services.storage_service import storage_service
 from app.services.video_generation.base import ImageToVideoProvider
-from app.services.video_generation.gemini_veo_provider import GeminiVeoProvider
+from app.services.video_generation.factory import build_video_provider
 from app.services.video_generation.video_validator import VideoValidator
 from app.services.walkthrough_planner.planner_service import walkthrough_planner
 
@@ -37,7 +39,7 @@ class VideoGenerationService:
 
     def __init__(self, provider: Optional[ImageToVideoProvider] = None):
         self.storage = storage_service
-        self.provider = provider or GeminiVeoProvider()
+        self.provider = provider or build_video_provider()
         self.validator = VideoValidator()
         self._concurrency_semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_GENERATIONS)
         self._active_tasks: Dict[str, asyncio.Task] = {}
@@ -71,11 +73,25 @@ class VideoGenerationService:
                 if job.status == GenerationJobStatus.PAUSED:
                     continue
                 self._active_tasks[job.job_id] = asyncio.create_task(
-                    self._execute_generation_job(project_id, job.job_id, scene)
+                    self._execute_generation_job(
+                        project_id, job.job_id, scene, scene_index=self._scene_index(plan, scene.scene_id)
+                    )
                 )
             if changed:
                 saved_gen["jobs"] = [job.model_dump() for job in jobs]
                 self.storage.save_generation_json(project_id, saved_gen)
+
+    @staticmethod
+    def _scene_index(plan: GenerationPlan, scene_id: str) -> int:
+        """Position of a scene in the walkthrough order.
+
+        Providers use this to rotate through a different camera move per room, so
+        the index has to be stable across restarts and retries.
+        """
+        for position, candidate in enumerate(sorted(plan.scenes, key=lambda s: s.order)):
+            if candidate.scene_id == scene_id:
+                return position
+        return 0
 
     def _build_cinematic_prompt(
         self,
@@ -119,6 +135,15 @@ class VideoGenerationService:
         saved_gen = self.storage.load_generation_json(project_id) or {}
         saved_jobs = {j["job_id"]: GenerationJob(**j) for j in saved_gen.get("jobs", [])}
         saved_clips = {c["scene_id"]: VideoClipMetadata(**c) for c in saved_gen.get("clips", [])}
+
+        current_options = render_options_service.get(project_id)
+        current_signature = current_options.generation_signature()
+        # Clips with no recorded signature predate options tracking, so their
+        # provenance is unknown and they are reported as stale rather than assumed
+        # to match the settings the user just chose.
+        clips_outdated = any(
+            (clip.render_signature or "") != current_signature for clip in saved_clips.values()
+        )
 
         scene_summaries: List[SceneGenerationSummary] = []
         completed_count = 0
@@ -196,6 +221,10 @@ class VideoGenerationService:
             failed_scenes=failed_count,
             pending_scenes=pending_count,
             total_duration_seconds=round(total_duration, 2),
+            active_provider=self.provider.get_provider_name(),
+            active_model=self.provider.get_model_name(),
+            render_options=current_options,
+            clips_outdated=clips_outdated,
             scenes=scene_summaries,
             active_jobs=list(saved_jobs.values()),
         )
@@ -221,6 +250,11 @@ class VideoGenerationService:
                 status_code=400,
             )
 
+        # Persist any settings the caller sent inline before touching the plan, so
+        # the clips about to be produced match what the UI just showed the user.
+        if request and request.render_options:
+            render_options_service.save(project_id, request.render_options)
+
         target_scene_ids = set(request.scene_ids) if (request and request.scene_ids) else None
         force_regen = request.force_regenerate if request else False
         if (
@@ -239,6 +273,7 @@ class VideoGenerationService:
         saved_gen = self.storage.load_generation_json(project_id) or {"jobs": [], "clips": []}
         saved_clips = {c["scene_id"]: VideoClipMetadata(**c) for c in saved_gen.get("clips", [])}
         jobs_list = [GenerationJob(**j) for j in saved_gen.get("jobs", [])]
+        current_signature = render_options_service.get(project_id).generation_signature()
         active_scene_ids = {
             job.scene_id
             for job in jobs_list
@@ -254,13 +289,20 @@ class VideoGenerationService:
             if target_scene_ids is not None and scene.scene_id not in target_scene_ids:
                 continue
 
-            clip_exists = (
-                scene.scene_id in saved_clips
-                and self.storage.get_clip_path(project_id, scene.scene_id).exists()
-            )
-            if clip_exists and not force_regen:
+            clip = saved_clips.get(scene.scene_id)
+            clip_exists = bool(clip) and self.storage.get_clip_path(project_id, scene.scene_id).exists()
+            # A clip is only reusable when it was rendered with the settings the
+            # project specifies *now*. Otherwise changing the duration or frame size
+            # and pressing Generate would silently keep the old footage.
+            clip_matches_options = bool(clip) and (clip.render_signature or "") == current_signature
+            if clip_exists and clip_matches_options and not force_regen:
                 logger.info(f"Reusing existing completed clip for scene {scene.scene_id}")
                 continue
+            if clip_exists and not clip_matches_options:
+                logger.info(
+                    f"Scene {scene.scene_id} clip was rendered with different settings "
+                    f"({clip.render_signature or 'untracked'} != {current_signature}); regenerating."
+                )
             if scene.scene_id in active_scene_ids:
                 logger.info(f"Skipping scene {scene.scene_id}: an existing job is already active or paused.")
                 continue
@@ -291,6 +333,7 @@ class VideoGenerationService:
                     project_id=project_id,
                     job_id=job_id,
                     scene=scene,
+                    scene_index=self._scene_index(plan, scene.scene_id),
                 )
             )
             self._active_tasks[job_id] = task
@@ -312,6 +355,7 @@ class VideoGenerationService:
         scene: PlannedScene,
         custom_prompt: Optional[str] = None,
         custom_motion: Optional[CameraMotionType] = None,
+        scene_index: int = 0,
     ) -> None:
         """
         Executes a single scene generation job with concurrency control, downloading, validation, and persistence.
@@ -339,7 +383,11 @@ class VideoGenerationService:
                 motion_type = custom_motion or scene.camera.motion_type
                 prompt = self._build_cinematic_prompt(scene, custom_prompt=custom_prompt)
                 neg_prompt = self._build_negative_constraints(scene)
-                target_duration = scene.camera.duration_seconds
+
+                # The project's render options own pacing and frame size; the plan's
+                # per-scene duration is only a fallback for older projects.
+                render_options = render_options_service.get(project_id)
+                target_duration = render_options.scene_duration_seconds or scene.camera.duration_seconds
 
                 output_clip_path = self.storage.get_clip_path(project_id, scene.scene_id)
                 output_clip_path.parent.mkdir(parents=True, exist_ok=True)
@@ -352,6 +400,7 @@ class VideoGenerationService:
                     duration_seconds=target_duration,
                     camera_motion=motion_type.value if hasattr(motion_type, "value") else str(motion_type),
                     output_path=output_clip_path,
+                    options=render_options.provider_hints(scene_index),
                 )
 
                 # 4. Validate output video file with OpenCV/container inspection
@@ -385,6 +434,7 @@ class VideoGenerationService:
                     prompt=prompt,
                     generated_at=datetime.now(timezone.utc).isoformat(),
                     quality=quality,
+                    render_signature=render_options.generation_signature(),
                 )
 
                 # 6. Save clip metadata and update job as completed
@@ -531,6 +581,7 @@ class VideoGenerationService:
                 project_id=project_id,
                 job_id=job_id,
                 scene=target_scene,
+                scene_index=self._scene_index(plan, target_scene.scene_id),
             )
         )
         self._active_tasks[job_id] = task
@@ -582,6 +633,7 @@ class VideoGenerationService:
                 scene=target_scene,
                 custom_prompt=custom_prompt,
                 custom_motion=custom_motion,
+                scene_index=self._scene_index(plan, target_scene.scene_id),
             )
         )
         self._active_tasks[new_job_id] = task

@@ -2,11 +2,14 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import { AssemblyConfig, AssemblyJob, FinalVideoMetadata } from "@/types/assembly";
+import { AssemblyJob, FinalVideoMetadata } from "@/types/assembly";
+import { GRADE_LABELS, MUSIC_LABELS, TRANSITION_LABELS } from "@/types/render-options";
 import { ImmersiveSceneViewer } from "@/components/ImmersiveSceneViewer";
 import { EvaluationSection } from "@/components/EvaluationSection";
+import { RenderOptionsPanel } from "@/components/RenderOptionsPanel";
 import {
   Film,
+  Boxes,
   Play,
   Pause,
   Download,
@@ -45,10 +48,8 @@ export function FinalWalkthroughView({
   // View Mode: Cinematic Walkthrough Video vs Immersive Scene Viewer
   const [viewMode, setViewMode] = useState<"cinematic" | "immersive">("cinematic");
 
-  // Configuration options
+  // The cinematic settings live on the project; the panel below owns them.
   const [showConfig, setShowConfig] = useState(false);
-  const [includeIntro, setIncludeIntro] = useState(true);
-  const [enableAudio, setEnableAudio] = useState(false);
 
   // Custom Player States
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -98,14 +99,9 @@ export function FinalWalkthroughView({
     setError(null);
     setIsAssembling(true);
     try {
-      const config: AssemblyConfig = {
-        intro_title_enabled: includeIntro,
-        audio_enabled: enableAudio,
-        intro_duration_seconds: 1.5,
-        crossfade_duration_seconds: 0.4,
-      };
+      // No config payload: the assembler reads the project's saved cinematic
+      // settings, so what the panel showed is exactly what gets rendered.
       const newJob = await api.assembleWalkthrough(projectId, {
-        config,
         force_reassemble: force,
       });
       setJob(newJob);
@@ -256,62 +252,21 @@ export function FinalWalkthroughView({
         </div>
       </div>
 
-      {/* Assembly Settings Drawer */}
+      {/* Cinematic settings: the real, persisted render options */}
       {showConfig && (
-        <div className="glass rounded-2xl p-6 border border-[var(--border-2)] anim-fade-down space-y-4">
-          <div className="flex items-center justify-between border-b border-[var(--border-1)] pb-3">
-            <h4 className="text-sm font-bold text-[var(--text-1)] flex items-center gap-2">
-              <Settings2 className="w-4 h-4 text-[var(--gold-1)]" />
-              Assembly Configuration & Options
-            </h4>
-            <span className="text-xs text-[var(--text-3)] font-mono">Real-time FFmpeg engine pipeline</span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-            <label className="flex items-start gap-3 p-3.5 rounded-xl bg-[var(--bg-0)] border border-[var(--border-1)] cursor-pointer hover:border-[var(--border-2)] transition-colors">
-              <input
-                type="checkbox"
-                checked={includeIntro}
-                onChange={(e) => setIncludeIntro(e.target.checked)}
-                className="mt-1 rounded border-[var(--border-2)] text-[var(--gold-1)] focus:ring-[var(--gold-1)]"
-              />
-              <div>
-                <p className="text-xs font-semibold text-[var(--text-1)]">Include Title Intro Card</p>
-                <p className="text-[11px] text-[var(--text-3)] mt-0.5">
-                  Displays property name and subtitle for 1.5s before the first scene clip.
-                </p>
-              </div>
-            </label>
-
-            <label className="flex items-start gap-3 p-3.5 rounded-xl bg-[var(--bg-0)] border border-[var(--border-1)] cursor-pointer hover:border-[var(--border-2)] transition-colors">
-              <input
-                type="checkbox"
-                checked={enableAudio}
-                onChange={(e) => setEnableAudio(e.target.checked)}
-                className="mt-1 rounded border-[var(--border-2)] text-[var(--gold-1)] focus:ring-[var(--gold-1)]"
-              />
-              <div>
-                <p className="text-xs font-semibold text-[var(--text-1)]">Optional Ambient Background Track</p>
-                <p className="text-[11px] text-[var(--text-3)] mt-0.5">
-                  Subtle, balanced ambient property soundscape. (Disabled by default).
-                </p>
-              </div>
-            </label>
-          </div>
-
-          <div className="flex justify-end pt-2">
-            <button
-              onClick={() => {
-                setShowConfig(false);
-                handleAssemble(true);
-              }}
-              disabled={isAssembling}
-              className="btn-gold px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-2"
-            >
-              <RotateCw className="w-3.5 h-3.5" />
-              Apply & Reassemble
-            </button>
-          </div>
+        <div className="anim-fade-down space-y-3">
+          <RenderOptionsPanel
+            projectId={projectId}
+            defaultOpen
+            onSaved={() => {
+              void fetchStatus();
+            }}
+          />
+          <p className="text-[11px] text-[var(--text-3)] px-1">
+            Changing transitions, grading, cards or the score marks the current MP4 as outdated —
+            reassemble to apply it. Changing clip length, frame shape or motion also requires
+            regenerating the clips in Phase 4.
+          </p>
         </div>
       )}
 
@@ -541,9 +496,51 @@ export function FinalWalkthroughView({
 
                 <div className="flex items-center gap-2 text-xs">
                   <Film className="w-4 h-4 text-[var(--gold-1)]" />
-                  <span className="text-[var(--text-3)]">Codec:</span>
+                  <span className="text-[var(--text-3)]">Format:</span>
                   <span className="font-bold text-[var(--text-1)] uppercase font-mono">
-                    {metadata.video_codec} ({metadata.format})
+                    {metadata.width}×{metadata.height} {metadata.fps}fps {metadata.video_codec}
+                  </span>
+                </div>
+
+                {metadata.render_options && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <Compass className="w-4 h-4 text-[var(--gold-1)]" />
+                    <span className="text-[var(--text-3)]">Look:</span>
+                    <span className="font-bold text-[var(--text-1)]">
+                      {GRADE_LABELS[metadata.render_options.color_grade]} ·{" "}
+                      {TRANSITION_LABELS[metadata.render_options.transition_style]}
+                      {metadata.render_options.room_labels_enabled ? " · Labels" : ""}
+                      {metadata.render_options.room_counter ? " · Counter" : ""}
+                      {metadata.render_options.cinematic_bloom ? " · Bloom" : ""}
+                      {metadata.render_options.letterbox ? " · Bars" : ""}
+                    </span>
+                  </div>
+                )}
+
+                {metadata.render_options && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <Boxes className="w-4 h-4 text-[var(--gold-1)]" />
+                    <span className="text-[var(--text-3)]">Depth:</span>
+                    <span className="font-bold text-[var(--text-1)]">
+                      {metadata.render_options.depth_parallax
+                        ? "2.5D parallax"
+                        : "Flat camera"}
+                      {metadata.render_options.motion_blur ? " · Motion blur" : ""}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 text-xs">
+                  {metadata.audio_enabled ? (
+                    <Volume2 className="w-4 h-4 text-[var(--gold-1)]" />
+                  ) : (
+                    <VolumeX className="w-4 h-4 text-[var(--text-3)]" />
+                  )}
+                  <span className="text-[var(--text-3)]">Score:</span>
+                  <span className="font-bold text-[var(--text-1)] font-mono">
+                    {metadata.audio_enabled
+                      ? `${MUSIC_LABELS[metadata.render_options?.music_style ?? "ambient"]} (${metadata.audio_codec})`
+                      : "Silent"}
                   </span>
                 </div>
               </div>

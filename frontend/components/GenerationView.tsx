@@ -8,12 +8,15 @@ import {
 } from "@/types/generation";
 import { SceneGenerationCard } from "./SceneGenerationCard";
 import { VideoPlayerModal } from "./VideoPlayerModal";
+import { RenderOptionsPanel } from "./RenderOptionsPanel";
+import { countFallbackClips, describeEngine } from "@/lib/providers";
 import {
   Play,
   ArrowLeft,
   Sparkles,
   Loader2,
   AlertTriangle,
+  Cpu,
 } from "lucide-react";
 
 interface GenerationViewProps {
@@ -166,6 +169,16 @@ export function GenerationView({ projectId, onBackToPlan, onProceedToPhase5 }: G
     ? Math.round((overview.completed_scenes / overview.total_scenes) * 100)
     : 0;
 
+  // Which engine is configured, and did any clip actually fall back to the local
+  // renderer? Surfacing the mismatch stops a quality difference looking like a bug.
+  const engine = describeEngine(overview?.active_provider);
+  const fallbackCount = overview
+    ? countFallbackClips(overview.scenes.map((scene) => scene.clip), overview.active_provider)
+    : 0;
+  // Clips rendered under older settings are reported by the backend; they must be
+  // regenerated before the walkthrough will match the chosen look.
+  const clipsOutdated = Boolean(overview?.clips_outdated && overview.completed_scenes > 0);
+
   return (
     <div className="space-y-8 anim-fade-up">
       {/* Top Header & Overview Banner */}
@@ -188,8 +201,43 @@ export function GenerationView({ projectId, onBackToPlan, onProceedToPhase5 }: G
               Image-to-Video Clip Generation
             </h2>
             <p className="text-sm text-[var(--text-2)] max-w-2xl leading-relaxed">
-              Transforming your structured walkthrough scenes into restrained, cinematic video clips powered by real image-to-video diffusion.
+              Transforming your structured walkthrough scenes into restrained, cinematic video clips using the{" "}
+              <span className="text-[var(--text-1)] font-semibold">{engine.label}</span> engine.
             </p>
+          </div>
+
+          {clipsOutdated && (
+            <div className="mt-5 rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 text-sm text-amber-200 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+              <span className="flex items-start gap-2">
+                <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-400" />
+                <span>
+                  {overview?.completed_scenes} existing clip
+                  {overview?.completed_scenes === 1 ? " was" : "s were"} rendered with different
+                  cinematic settings than the project now uses. Regenerate to apply the current
+                  settings.
+                </span>
+              </span>
+              <button
+                onClick={() => {
+                  setForceRegenerate(true);
+                  void handleGenerateAll();
+                }}
+                disabled={isGenerating}
+                className="btn-gold px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap disabled:opacity-50"
+              >
+                Regenerate All Clips
+              </button>
+            </div>
+          )}
+
+          {/* Cinematic settings live here so the look is chosen before spending time on clips */}
+          <div className="mt-8">
+            <RenderOptionsPanel
+              projectId={projectId}
+              onSaved={() => {
+                void fetchOverview();
+              }}
+            />
           </div>
 
           {/* Action Trigger */}
@@ -253,6 +301,15 @@ export function GenerationView({ projectId, onBackToPlan, onProceedToPhase5 }: G
               Free-tier provider quota is paused. Wait for the provider quota window to reset, then use the scene Retry buttons. You can also create the local image slideshow now. Duplicate batch jobs are blocked while a scene is queued, processing, or paused.
             </div>
           )}
+          {fallbackCount > 0 && overview?.status !== "paused" && (
+            <div className="mt-5 rounded-xl border border-[var(--border-2)] bg-[var(--bg-0)] px-4 py-3 text-sm text-[var(--text-2)]">
+              {fallbackCount} of {overview?.completed_scenes} clip
+              {overview?.completed_scenes === 1 ? " was" : "s were"} rendered by the local fallback
+              renderer because the {engine.label} engine was unavailable (quota, rate limit, or
+              configuration). Those clips move a camera over your original photographs, so the
+              property is reproduced exactly. Retry a scene to try the {engine.label} engine again.
+            </div>
+          )}
         </div>
 
         {/* Stats Metrics Bar */}
@@ -284,10 +341,19 @@ export function GenerationView({ projectId, onBackToPlan, onProceedToPhase5 }: G
             <div className="bg-[var(--bg-0)] p-4 rounded-2xl border border-[var(--border-1)]">
               <span className="text-[10px] font-mono text-[var(--gold-1)] uppercase block font-bold">Engine</span>
               <span className="text-base font-semibold text-[var(--text-1)] mt-1 block flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-[var(--gold-2)]" />
-                Gemini Veo
+                {engine.kind === "plate" ? (
+                  <Cpu className="w-3.5 h-3.5 text-[var(--gold-2)]" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5 text-[var(--gold-2)]" />
+                )}
+                {engine.label}
               </span>
-              <span className="text-xs text-[var(--text-3)] block mt-0.5">Image-to-Video Diffusion</span>
+              <span className="text-xs text-[var(--text-3)] block mt-0.5">{engine.description}</span>
+              {fallbackCount > 0 && (
+                <span className="text-[10px] font-mono text-amber-300 block mt-0.5">
+                  {fallbackCount} clip{fallbackCount === 1 ? "" : "s"} rendered locally
+                </span>
+              )}
             </div>
 
             <div className="bg-[var(--bg-0)] p-4 rounded-2xl border border-[var(--border-1)]">
@@ -326,7 +392,9 @@ export function GenerationView({ projectId, onBackToPlan, onProceedToPhase5 }: G
             Planned Scene Clips ({overview?.scenes.length || 0})
           </h3>
           <span className="text-xs text-[var(--text-3)] font-mono">
-            Each video clip strictly preserves authentic room geometry
+            {engine.kind === "plate"
+              ? "Camera motion over your original photographs — geometry preserved exactly"
+              : "Generated clips keep the source photo as a visual guide"}
           </span>
         </div>
 
@@ -348,6 +416,8 @@ export function GenerationView({ projectId, onBackToPlan, onProceedToPhase5 }: G
               <SceneGenerationCard
                 scene={scene}
                 projectId={projectId}
+                activeProvider={overview?.active_provider}
+                activeModel={overview?.active_model}
                 onPreview={(s) => setSelectedPreviewScene(s)}
                 onRetry={handleRetryJob}
                 onRegenerate={handleRegenerateScene}

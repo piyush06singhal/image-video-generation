@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import hmac
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,14 +31,70 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configure CORS for frontend access
+# ==========================================
+# Optional API access key
+# ==========================================
+#
+# NOTE ON ORDER: Starlette builds the middleware stack so that the most recently
+# added middleware is the OUTERMOST one. CORS is registered *after* this guard (at
+# the bottom of this block) so that CORS wraps the guard's responses. When the
+# guard sat outside CORS, its 401 came back without an Access-Control-Allow-Origin
+# header, and the browser reported an opaque "Failed to fetch" instead of the real
+# "a valid API key is required" message — which made a misconfigured key look like
+# a dead server.
+
+@app.middleware("http")
+async def api_access_key_guard(request: Request, call_next):
+    """
+    Gate the API behind a shared secret when API_ACCESS_KEY is configured.
+
+    Deliberately exempt:
+    * ``/health`` — the studio probes readiness before it has any credentials.
+    * paths ending in ``/file`` — media streaming. `<img>`/`<video>` cannot send headers,
+      and these routes are addressed by unguessable project/image ids. For a hardened
+      deployment, replace this with signed, expiring URLs.
+    * ``OPTIONS`` — CORS preflight must succeed before the browser sends the key.
+
+    When API_ACCESS_KEY is unset the guard is a no-op, so local development is unchanged.
+    """
+    expected = settings.API_ACCESS_KEY
+    if not expected:
+        return await call_next(request)
+
+    if request.method == "OPTIONS":
+        return await call_next(request)
+
+    path = request.url.path.rstrip("/")
+    if path.endswith("/health") or path.endswith("/file"):
+        return await call_next(request)
+
+    provided = request.headers.get("X-API-Key") or request.query_params.get("key") or ""
+    if not hmac.compare_digest(provided, expected):
+        logger.warning(f"Rejected unauthenticated {request.method} {request.url.path}")
+        body = ApiResponse.error_response(
+            code="UNAUTHORIZED",
+            message=(
+                "A valid API key is required. Send it in the X-API-Key header "
+                "(or as a `key` query parameter)."
+            ),
+        )
+        return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=body.model_dump())
+
+    return await call_next(request)
+
+
+# Configure CORS for frontend access. Registered last so it is the outermost
+# middleware and therefore decorates every response, including the guard's 401s.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS if isinstance(settings.CORS_ORIGINS, list) else ["*"],
+    # Never fall back to a wildcard: allow_credentials=True with "*" is rejected by
+    # browsers and, where accepted, would let any origin drive the API.
+    allow_origins=settings.CORS_ORIGINS if isinstance(settings.CORS_ORIGINS, list) else [],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Include API routes under prefix (e.g. /api)
 app.include_router(api_router, prefix=settings.API_PREFIX)

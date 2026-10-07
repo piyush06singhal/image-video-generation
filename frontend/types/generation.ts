@@ -24,6 +24,8 @@ export interface VideoClipMetadata {
   prompt: string;
   generated_at: string;
   quality: QualityAssessment;
+  /** Fingerprint of the render options this clip was rendered with. */
+  render_signature?: string | null;
 }
 
 export interface GenerationJob {
@@ -65,6 +67,13 @@ export interface ProjectGenerationOverview {
   failed_scenes: number;
   pending_scenes: number;
   total_duration_seconds: number;
+  /** Configured engine for this run; compare to each clip's `provider` to spot fallbacks. */
+  active_provider?: string | null;
+  active_model?: string | null;
+  /** Creative settings this project will render with. */
+  render_options?: import('@/types/render-options').RenderOptions | null;
+  /** True when completed clips were rendered with different settings than the project now has. */
+  clips_outdated?: boolean;
   scenes: SceneGenerationSummary[];
   active_jobs: GenerationJob[];
 }
@@ -72,6 +81,7 @@ export interface ProjectGenerationOverview {
 export interface GenerateClipsPayload {
   scene_ids?: string[];
   force_regenerate?: boolean;
+  render_options?: import('@/types/render-options').RenderOptions;
 }
 
 export interface RegenerateScenePayload {

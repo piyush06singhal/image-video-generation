@@ -6,6 +6,10 @@ import { SceneCorrectionPayload } from "@/types/scene";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000";
 
+// Sent as X-API-Key when the backend sets API_ACCESS_KEY. Media (`<img>`/`<video>`) URLs
+// cannot carry headers, which is why the backend leaves the /file routes ungated.
+const API_ACCESS_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
+
 export class ApiError extends Error {
   code: string;
   details?: unknown;
@@ -28,6 +32,7 @@ async function request<T>(
     const response = await fetch(url, {
       ...options,
       headers: {
+        ...(API_ACCESS_KEY ? { "X-API-Key": API_ACCESS_KEY } : {}),
         ...(options.headers || {}),
       },
     });
@@ -183,6 +188,37 @@ export const api = {
       },
       body: JSON.stringify(updatePayload),
     });
+  },
+
+  // Render options: the cinematic style controls shared by Phase 4 and Phase 5.
+  async getRenderPresets(): Promise<import("@/types/render-options").RenderPresetInfo[]> {
+    return request<import("@/types/render-options").RenderPresetInfo[]>(
+      `/api/projects/render-options/presets`
+    );
+  },
+
+  async getRenderOptions(
+    projectId: string
+  ): Promise<import("@/types/render-options").RenderOptions> {
+    return request<import("@/types/render-options").RenderOptions>(
+      `/api/projects/${projectId}/render-options`
+    );
+  },
+
+  async updateRenderOptions(
+    projectId: string,
+    payload: import("@/types/render-options").RenderOptionsUpdate
+  ): Promise<import("@/types/render-options").RenderOptions> {
+    return request<import("@/types/render-options").RenderOptions>(
+      `/api/projects/${projectId}/render-options`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      }
+    );
   },
 
   // Phase 4 Endpoints: Video Generation

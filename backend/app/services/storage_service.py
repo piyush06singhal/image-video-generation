@@ -67,6 +67,44 @@ class StorageService:
         clean_sid = scene_id.replace("scene_", "")
         return self.get_project_clips_dir(project_id) / f"clip_{clean_sid}.mp4"
 
+    def get_render_options_path(self, project_id: str) -> Path:
+        return self.get_project_dir(project_id) / "render_options.json"
+
+    def save_render_options(self, project_id: str, data: Dict[str, Any]) -> None:
+        """
+        Atomically persists the per-project cinematic render options.
+        """
+        json_path = self.get_render_options_path(project_id)
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                dir=str(json_path.parent),
+                delete=False,
+                encoding="utf-8",
+            ) as tf:
+                json.dump(data, tf, indent=2, ensure_ascii=False)
+                temp_name = tf.name
+            os.replace(temp_name, str(json_path))
+        except Exception as e:
+            logger.error(f"Failed to save render_options.json for {project_id}: {e}")
+            raise StorageError(f"Failed to persist render options for project {project_id}")
+
+    def load_render_options(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Loads per-project render options. Returns None when the user has not customised
+        anything yet, so callers can fall back to the default house style.
+        """
+        json_path = self.get_render_options_path(project_id)
+        if not json_path.is_file():
+            return None
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to read render_options.json for {project_id}: {e}")
+            return None
+
     def save_assembly_json(self, project_id: str, data: Dict[str, Any]) -> None:
         """
         Atomically saves assembly overview and job metadata into assembly.json.

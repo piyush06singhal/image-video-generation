@@ -81,11 +81,72 @@ Saves custom user modifications (reordering, camera motion prompts, exclusions).
 
 ---
 
+## Cinematic Render Options (cross-cutting: Phases 4–5)
+
+One creative configuration per project drives both Phase 4 and Phase 5. It is persisted
+as `render_options.json` inside the project directory, so a later regenerate/reassemble
+reproduces the same look without re-sending the form.
+
+### `GET /api/projects/render-options/presets`
+Lists the built-in style presets (`cinematic_luxury`, `modern_minimal`, `energetic_reel`,
+`documentary_tour`, `quick_draft`) with human descriptions and their option values.
+
+### `GET /api/projects/{project_id}/render-options`
+Returns the project's effective options (persisted values, else the house style).
+
+### `PATCH /api/projects/{project_id}/render-options`
+Applies a preset and/or partial overrides.
+- **Body:** `{"preset": "energetic_reel", "options": {"music_volume": 0.4}, "replace": false}`
+- `preset` re-bases the whole option set; `options` merges onto what is already saved.
+
+Option fields: `scene_duration_seconds`, `motion_intensity`, `camera_variety`,
+`depth_parallax`, `motion_blur`, `transition_style`, `transition_duration_seconds`,
+`aspect_ratio` (`16:9`/`9:16`/`1:1`), `resolution` (`720p`/`1080p`/`1440p`), `fps`,
+`intro_title_enabled`/`intro_title_text`/`intro_duration_seconds`,
+`outro_enabled`/`outro_text`/`outro_duration_seconds`, `room_labels_enabled`,
+`room_counter`, `brand_text`, `color_grade`, `vignette`, `film_grain`,
+`cinematic_bloom`, `letterbox`, `music_enabled`, `music_style`, `music_volume`.
+
+Production-value fields in one line each:
+- `depth_parallax` — estimates per-pixel depth locally and moves near pixels further
+  than far ones, so a camera move over a still has real dimensionality. Falls back to
+  a flat camera move when the depth model is absent.
+- `motion_blur` — trailing-shutter blur on fast movement.
+- `cinematic_bloom` — highlight halation: only pixels above the gate glow, smeared
+  wide horizontally the way a fast lens bleeds light.
+- `letterbox` — scope bars, landscape output only. **Off by default**, because bars
+  remove 11% of the picture the client is paying to see.
+- `room_counter` — adds “03 / 08” and a tour progress line to each lower-third.
+- `brand_text` — a discreet agency mark under the title and end cards.
+
+`transition_style` accepts `straight_cut`, `crossfade`, `fade_to_black`,
+`slide_left`, `wipe_up`, `blur_dissolve` and `smooth_left`. The last two are
+motion-bridged cuts: they smear the outgoing frame as the incoming one arrives, so
+the eye reads one continuous move instead of two photographs swapping places.
+
+`color_grade` accepts `none`, `warm_luxury`, `golden_hour`, `cool_modern`,
+`cinematic_teal` and `noir`. Every grade lifts shadows off true black and rolls the
+highlights off below clipping rather than blanket-darkening the frame.
+
+Sound design is not an option — every score carries a whoosh on each cut, a riser
+into the first shot and a button on the end card, placed from the assembly's own cut
+positions.
+
+Changing an option that reshapes the clips (`scene_duration_seconds`, `aspect_ratio`,
+`resolution`, `fps`, `motion_intensity`, `camera_variety`, `depth_parallax`,
+`motion_blur`) makes already-generated clips stale; `GET /generation` reports `clips_outdated`, and the next `POST /generate`
+regenerates them. Any change marks the assembled video outdated via
+`render_options_hash` — and *reverting* to the settings a cut was built with makes it
+valid again, so no needless re-render is triggered.
+
+---
+
 ## 5. Image-to-Video Generation (Phase 4)
 
 ### `POST /api/projects/{project_id}/generate`
 Triggers image-to-video clip generation for all scenes in the walkthrough plan.
-- **Body (Optional):** `{"force_regenerate": false, "scene_ids": null}`
+Clips are reused only when they were rendered with the project's *current* options.
+- **Body (Optional):** `{"force_regenerate": false, "scene_ids": null, "render_options": null}`
 
 ### `GET /api/projects/{project_id}/generation`
 Retrieves overall clip generation progress and job status per scene.
@@ -112,8 +173,14 @@ Creates a deterministic local image slideshow walkthrough without calling Gemini
 ## 6. Video Assembly & Delivery (Phase 5)
 
 ### `POST /api/projects/{project_id}/assemble`
-Normalizes clips, applies transitions, generates title card, and stitches the final walkthrough MP4.
-- **Body (Optional):** `{"force_reassemble": false, "config": {"intro_title_enabled": true, "audio_enabled": false}}`
+Conforms every clip to the target frame, burns optional room labels, builds intro/outro
+cards over blurred plates of the property's own photography, applies the chosen
+transitions and colour grade (with vignette/grain), synthesises a royalty-free score,
+and writes the final walkthrough MP4.
+- **Body (Optional):** `{"force_reassemble": false, "render_options": null, "config": null}`
+- `render_options` (optional) is saved for the project before assembling.
+- `config` is a legacy override path. Only fields you explicitly set are applied, so an
+  empty config means "use the project's render options".
 
 ### `GET /api/projects/{project_id}/assembly`
 Retrieves assembly job status.

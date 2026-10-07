@@ -15,6 +15,12 @@ backend/.env
 *.pyo
 *.pyd
 
+# Local model weights (large binaries fetched on demand, never committed)
+backend/models/*.onnx
+backend/models/*.pt
+backend/models/*.pth
+!backend/models/.gitkeep
+
 # Storage & test data (preserve empty directories, exclude user uploaded media)
 backend/storage/projects/*
 !backend/storage/projects/.gitkeep
@@ -25,6 +31,9 @@ backend/storage/processed/*
 backend/test_images/
 .env
 .env.local
+
+# Agent tooling state (local only, nothing the project needs to run)
+.freebuff/
 
 
 # OS

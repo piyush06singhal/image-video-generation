@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Image from "next/image";
 import { SceneGenerationSummary } from "@/types/generation";
+import { describeEngine, isLocalFallback } from "@/lib/providers";
 import {
   Play,
   RefreshCw,
@@ -11,11 +12,15 @@ import {
   Loader2,
   Video,
   Sparkles,
+  Cpu,
 } from "lucide-react";
 
 interface SceneGenerationCardProps {
   scene: SceneGenerationSummary;
   projectId?: string;
+  /** Configured engine, used to detect a local-fallback render for this clip. */
+  activeProvider?: string | null;
+  activeModel?: string | null;
   onPreview: (scene: SceneGenerationSummary) => void;
   onRetry: (jobId: string) => void;
   onRegenerate: (sceneId: string, customMotion?: string) => void;
@@ -32,12 +37,18 @@ const MOTION_OPTIONS = [
 
 export function SceneGenerationCard({
   scene,
+  activeProvider,
+  activeModel,
   onPreview,
   onRetry,
   onRegenerate,
 }: SceneGenerationCardProps) {
   const [showMotionMenu, setShowMotionMenu] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+
+  const clipEngine = describeEngine(scene.clip?.provider);
+  const activeEngine = describeEngine(activeProvider);
+  const usedFallback = scene.status === "completed" && isLocalFallback(scene.clip?.provider, activeProvider);
 
   const handleRetryClick = async () => {
     if (!scene.job_id) return;
@@ -159,6 +170,34 @@ export function SceneGenerationCard({
             </div>
           )}
 
+          {/* Render engine provenance: never let a user assume which engine ran. */}
+          {scene.status === "completed" && scene.clip && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono border border-[var(--border-2)] bg-[var(--bg-0)] text-[var(--text-2)]"
+                title={`${clipEngine.description}${scene.clip.model ? ` · ${scene.clip.model}` : ""}`}
+              >
+                {clipEngine.kind === "plate" ? <Cpu className="w-3 h-3" /> : <Sparkles className="w-3 h-3" />}
+                {clipEngine.label}
+              </span>
+              {usedFallback && (
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono border border-amber-500/30 bg-amber-950/40 text-amber-200"
+                  title={`${activeEngine.label} was unavailable, so this clip was rendered locally.`}
+                >
+                  <AlertTriangle className="w-3 h-3" />
+                  Fallback
+                </span>
+              )}
+            </div>
+          )}
+
+          {usedFallback && (
+            <p className="mt-1.5 text-[10px] leading-snug text-amber-200/80">
+              Rendered locally on device. Camera motion only — the property pixels are untouched.
+            </p>
+          )}
+
           {/* Failure reason */}
           {scene.status === "failed" && scene.last_error && (
             <div className="mt-2 p-2 bg-red-950/40 border border-red-500/30 rounded-lg text-xs text-red-300">
@@ -237,9 +276,9 @@ export function SceneGenerationCard({
             <div className="w-full flex items-center justify-between text-[var(--gold-2)] font-mono text-xs">
               <span className="animate-pulse flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5" />
-                Synthesizing video…
+                Rendering clip…
               </span>
-              <span>Veo 3.1</span>
+              <span>{activeModel || activeEngine.label}</span>
             </div>
           ) : (
             <div className="text-[var(--text-3)] text-xs font-mono">

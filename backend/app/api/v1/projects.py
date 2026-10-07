@@ -31,9 +31,11 @@ from app.schemas.generation import (
 from app.schemas.image import ImageBatchUploadResult, ImageMetadata
 from app.schemas.plan import GenerationPlan, PlanUpdateRequest
 from app.schemas.project import ProjectCreate, ProjectResponse
+from app.schemas.render_options import RenderOptions, RenderPresetInfo, RenderOptionsUpdate
 from app.schemas.scene import ProjectAnalysisRequest, SceneCorrectionPayload
 from app.services.evaluation_service import evaluation_service
 from app.services.project_service import project_service
+from app.services.render_options_service import render_options_service
 from app.services.scene_service import scene_service
 from app.services.video_assembler import video_assembler_service
 from app.services.video_generation import video_generation_service
@@ -299,6 +301,48 @@ async def generate_project_clips(
     """
     overview = await video_generation_service.generate_clips(project_id, request)
     return ApiResponse.success_response(overview)
+
+
+# ==========================================
+# Render options (cinematic style controls)
+# ==========================================
+
+@router.get("/render-options/presets", response_model=ApiResponse[List[RenderPresetInfo]])
+async def list_render_presets():
+    """
+    Lists the available cinematic style presets for the studio UI.
+    """
+    return ApiResponse.success_response(render_options_service.list_presets())
+
+
+@router.get("/{project_id}/render-options", response_model=ApiResponse[RenderOptions])
+async def get_project_render_options(project_id: str):
+    """
+    Returns the cinematic render options this project will be generated and assembled with.
+    """
+    # Options default rather than error, so the service cannot distinguish "no
+    # options saved yet" from "no such project" — check the project here.
+    if not project_service.storage.load_project_json(project_id):
+        raise ProjectNotFoundError(project_id)
+    return ApiResponse.success_response(render_options_service.get(project_id))
+
+
+@router.patch("/{project_id}/render-options", response_model=ApiResponse[RenderOptions])
+async def update_project_render_options(project_id: str, payload: RenderOptionsUpdate):
+    """
+    Applies a preset and/or partial option overrides to a project.
+
+    Any already-rendered clips and the final walkthrough become stale when the
+    changed options affect them; the generation overview and final-video metadata
+    report that so the UI can prompt for a regenerate/reassemble.
+    """
+    options = render_options_service.update(
+        project_id,
+        preset=payload.preset,
+        overrides=payload.options,
+        replace=payload.replace,
+    )
+    return ApiResponse.success_response(options)
 
 
 @router.get("/{project_id}/generation", response_model=ApiResponse[ProjectGenerationOverview])

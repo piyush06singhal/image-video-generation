@@ -60,7 +60,9 @@ class MockVideoProvider(ImageToVideoProvider):
         duration_seconds: float,
         camera_motion: str,
         output_path: Path,
+        options: Optional[Dict[str, Any]] = None,
     ) -> ProviderResult:
+        self.last_options = options
         self.call_count += 1
         if self.should_fail:
             raise AppException(code=self.fail_code, message=self.fail_message, status_code=429)
@@ -190,6 +192,18 @@ def test_video_validator_valid_and_corrupt(tmp_path):
     assert meta["height"] == 360
     assert meta["duration_seconds"] >= 1.9
     assert quality == QualityAssessment.ACCEPTABLE
+
+
+def test_overview_exposes_active_engine(test_project_with_plan, isolated_storage):
+    """The UI needs to know which engine is configured so it can show a per-clip
+    fallback indicator instead of assuming everything is AI-generated video."""
+    project_id, _plan = test_project_with_plan
+    service = VideoGenerationService(provider=MockVideoProvider())
+    service.storage = isolated_storage
+
+    overview = service.get_or_create_overview(project_id)
+    assert overview.active_provider == "mock_video_provider"
+    assert overview.active_model == "mock-veo-model"
 
 
 @pytest.mark.asyncio

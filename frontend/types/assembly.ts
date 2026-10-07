@@ -38,12 +38,19 @@ export interface FinalVideoMetadata {
   scenes_in_order: AssembledSceneInfo[];
   plan_version: number;
   plan_hash: string;
+  render_options_hash?: string | null;
+  render_options?: import("@/types/render-options").RenderOptions | null;
   is_outdated: boolean;
   created_at: string;
 }
 
+/**
+ * Legacy assembly overrides. Superseded by RenderOptions; only fields you
+ * explicitly set are applied, so an empty object means "use the project's
+ * render options".
+ */
 export interface AssemblyConfig {
-  output_resolution?: "720p" | "1080p";
+  output_resolution?: string;
   output_fps?: number;
   crossfade_duration_seconds?: number;
   intro_title_enabled?: boolean;
@@ -54,6 +61,7 @@ export interface AssemblyConfig {
 
 export interface AssemblyRequest {
   config?: AssemblyConfig;
+  render_options?: import("@/types/render-options").RenderOptions;
   force_reassemble?: boolean;
 }
 
