@@ -2,10 +2,12 @@
 
 import React from "react";
 import { VideoClipMetadata } from "@/types/generation";
+import { api } from "@/lib/api";
 import { X, CheckCircle2, Video, Clock, Monitor, Sparkles } from "lucide-react";
 
 interface VideoPlayerModalProps {
   isOpen: boolean;
+  projectId: string;
   sceneLabel: string;
   clip: VideoClipMetadata | null;
   onClose: () => void;
@@ -13,6 +15,7 @@ interface VideoPlayerModalProps {
 
 export function VideoPlayerModal({
   isOpen,
+  projectId,
   sceneLabel,
   clip,
   onClose,
@@ -47,7 +50,7 @@ export function VideoPlayerModal({
         {/* Video Player */}
         <div className="relative bg-black flex items-center justify-center aspect-video w-full">
           <video
-            src={clip.clip_url}
+            src={api.getClipUrl(projectId, clip.scene_id)}
             controls
             autoPlay
             loop

@@ -352,7 +352,7 @@ export function ImmersiveSceneViewer({
         <Info className="w-4 h-4 text-[var(--gold-1)] shrink-0 mt-0.5" />
         <div className="text-xs text-[var(--text-2)] leading-relaxed">
           <strong className="text-[var(--text-1)] font-semibold">Immersive Scene Inspector:</strong>{" "}
-          Interactive 360° spherical viewer (for equirectangular panos) and ultra high-res pan/zoom (for perspective photos).{" "}
+          Interactive spherical viewing is available only for detected equirectangular panoramas; ordinary photos use pan/zoom.{" "}
           <span className="text-[var(--text-3)] italic">
             *Immersive view is based on supplied 2D photographs and does not represent a full 3D reconstruction.
           </span>

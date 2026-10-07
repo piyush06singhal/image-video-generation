@@ -625,7 +625,7 @@ export default function LandingPage() {
               <p className="text-xs sm:text-sm text-[var(--text-2)] leading-relaxed">
                 Google Veo 3.1 for generative image-to-video, plus plate-based renderers that
                 move a camera over your original photographs. Plate-based motion is pixel-exact,
-                so the property can never be reinvented — and a quota-limited engine degrades
+                so local fallback renders stay grounded in the source photograph — and a quota-limited engine degrades
                 to the local renderer instead of failing the walkthrough.
               </p>
             </div>

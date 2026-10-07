@@ -13,7 +13,6 @@ import {
   Play,
   Pause,
   Download,
-  RotateCw,
   Clock,
   Layers,
   Sparkles,
@@ -62,17 +61,30 @@ export function FinalWalkthroughView({
   const fetchStatus = useCallback(async () => {
     try {
       const [metaRes, jobRes] = await Promise.all([
-        api.getFinalVideoMetadata(projectId).catch(() => null),
-        api.getAssemblyStatus(projectId).catch(() => null),
+        api.getFinalVideoMetadata(projectId),
+        api.getAssemblyStatus(projectId),
       ]);
       setMetadata(metaRes);
       setJob(jobRes);
-      if (jobRes && (jobRes.status === "processing" || jobRes.status === "queued")) {
+      if (jobRes?.status === "failed") {
+        setError(jobRes.error || jobRes.stage_message || "Walkthrough assembly failed.");
+        setIsAssembling(false);
+      } else if (
+        jobRes &&
+        (jobRes.status === "processing" || jobRes.status === "queued")
+      ) {
+        setError(null);
         setIsAssembling(true);
       } else {
         setIsAssembling(false);
       }
     } catch (err: unknown) {
+      const e = err as { message?: string };
+      const message =
+        e.message ||
+        "Unable to load assembly status. Verify that the FastAPI backend is running.";
+      setError(message);
+      setIsAssembling(false);
       console.error("Failed to load assembly status:", err);
     } finally {
       setLoading(false);
@@ -90,7 +102,7 @@ export function FinalWalkthroughView({
   useEffect(() => {
     if (!isAssembling) return;
     const interval = setInterval(() => {
-      fetchStatus();
+      void fetchStatus();
     }, 2000);
     return () => clearInterval(interval);
   }, [isAssembling, fetchStatus]);
@@ -107,6 +119,9 @@ export function FinalWalkthroughView({
       setJob(newJob);
       if (newJob.status === "completed" && newJob.result) {
         setMetadata(newJob.result);
+        setIsAssembling(false);
+      } else if (newJob.status === "failed") {
+        setError(newJob.error || newJob.stage_message || "Walkthrough assembly failed.");
         setIsAssembling(false);
       }
     } catch (err: unknown) {
@@ -207,7 +222,7 @@ export function FinalWalkthroughView({
             {propertyName}
           </h1>
           <p className="text-sm text-[var(--text-2)] max-w-2xl leading-relaxed">
-            Experience the generated real estate walkthrough in cinematic playback or interactively inspect scenes in 360° / immersive pan-zoom view.
+            Experience the generated real estate walkthrough in cinematic playback or inspect source scenes with the immersive pan-and-zoom viewer.
           </p>
         </div>
 
@@ -378,7 +393,7 @@ export function FinalWalkthroughView({
             }`}
           >
             <Compass className="w-4 h-4" />
-            Immersive Scene Viewer (360° / Pan-Zoom)
+            Immersive Scene Viewer (Pan-Zoom)
           </button>
         </div>
       </div>

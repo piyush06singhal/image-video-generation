@@ -430,6 +430,7 @@ export function GenerationView({ projectId, onBackToPlan, onProceedToPhase5 }: G
       {/* Video Preview Modal */}
       <VideoPlayerModal
         isOpen={Boolean(selectedPreviewScene && selectedPreviewScene.clip)}
+        projectId={projectId}
         sceneLabel={selectedPreviewScene?.label || "Scene Clip"}
         clip={selectedPreviewScene?.clip || null}
         onClose={() => setSelectedPreviewScene(null)}

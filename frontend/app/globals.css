@@ -70,6 +70,16 @@
 /* Base */
 *, *::before, *::after { box-sizing: border-box; }
 
+/* Long scene labels and provider messages must not force flex/grid cards wider
+   than their container or paint over adjacent controls. */
+button, a, h1, h2, h3, h4, h5, h6, p, span {
+  overflow-wrap: anywhere;
+}
+
+.glass-gold, .glass-card, .glass, .glass-warm {
+  min-width: 0;
+}
+
 html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;

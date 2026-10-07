@@ -155,8 +155,16 @@ class GeminiSceneAnalyzer(BaseSceneAnalyzer):
             f"Submitting image {image_path.name} ({len(img_bytes)} bytes) to vision model for scene understanding"
         )
 
-        # Fallback candidate models in priority order to overcome free tier spikes
-        candidate_models = [self.model_name, "gemini-2.0-flash", "gemini-1.5-flash"]
+        # Gemini 1.5 model IDs are no longer available on the v1beta endpoint.
+        # Keep older .env files working by translating that retired default to the
+        # current supported flash model instead of retrying a guaranteed 404.
+        configured_model = self.model_name.strip()
+        if configured_model == "gemini-1.5-flash":
+            configured_model = "gemini-2.5-flash"
+
+        # Fallback candidate models in priority order to overcome transient quota
+        # or availability issues without including retired model IDs.
+        candidate_models = [configured_model, "gemini-2.5-flash", "gemini-2.0-flash"]
         # Deduplicate while preserving order
         candidate_models = list(dict.fromkeys([m for m in candidate_models if m]))
 
@@ -171,7 +179,10 @@ class GeminiSceneAnalyzer(BaseSceneAnalyzer):
                     response = client.models.generate_content(
                         model=model,
                         contents=[
-                            types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"),
+                            types.Part.from_bytes(
+                                data=img_bytes,
+                                mime_type=self._mime_type_for_path(image_path),
+                            ),
                             SCENE_ANALYSIS_PROMPT,
                         ],
                         config=types.GenerateContentConfig(
@@ -221,6 +232,17 @@ class GeminiSceneAnalyzer(BaseSceneAnalyzer):
             )
 
         return self._parse_and_validate_response(raw_text, image_path.name)
+
+    @staticmethod
+    def _mime_type_for_path(image_path: Path) -> str:
+        """Return the image MIME type expected by Gemini for the source file."""
+        suffix = image_path.suffix.lower()
+        return {
+            ".png": "image/png",
+            ".webp": "image/webp",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+        }.get(suffix, "application/octet-stream")
 
     def _parse_and_validate_response(
         self, raw_text: str, filename: str
