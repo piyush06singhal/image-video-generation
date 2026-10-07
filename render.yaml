@@ -1,0 +1,94 @@
+# Render Blueprint — CinéEstate backend
+#
+# The recommended topology is: frontend on Vercel, backend here.
+#
+# This backend does not belong on a serverless platform. It renders video with
+# FFmpeg for minutes at a time, keeps a project tree on disk and scans it at
+# startup, and holds in-process asyncio generation jobs. All three are normal on
+# a long-lived web service and all three are broken on a function.
+#
+# Deploy: Render Dashboard -> New -> Blueprint -> pick this repository.
+# Secrets are marked `sync: false`, so Render prompts for them once and never
+# stores them in the repository.
+
+services:
+  - type: web
+    name: cineestate-api
+    runtime: python
+    # 0.1 CPU / 512 MB. Enough for the API, AI scene analysis and remote
+    # generation. Local Ken Burns rendering and 1080p assembly are CPU- and
+    # memory-hungry: upgrade to 1c-2g before relying on them.
+    plan: free
+    region: oregon
+    # The FastAPI app lives in backend/; the frontend stays on Vercel.
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    # Render replaces instances on every deploy; give in-flight renders a moment
+    # to finish writing before the process is killed.
+    maxShutdownDelaySeconds: 30
+
+    # A persistent disk requires a PAID instance type. Without one, the service
+    # filesystem is ephemeral: projects are lost on every deploy, restart or
+    # spin-down. To persist data, upgrade `plan:` above and uncomment this block
+    # plus STORAGE_DIR below.
+    #
+    # disk:
+    #   name: cineestate-storage
+    #   mountPath: /var/data
+    #   sizeGB: 1
+
+    envVars:
+      # Matches backend/.python-version, so it survives a change of working
+      # directory after rootDir is applied.
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+
+      # --- Non-secret configuration -----------------------------------------
+      - key: VIDEO_PROVIDER
+        value: auto
+      - key: VIDEO_FALLBACK_TO_LOCAL
+        value: "true"
+      - key: AI_MODEL
+        value: gemini-2.5-flash
+      - key: MAX_IMAGE_SIZE_BYTES
+        value: "20971520"
+      - key: MAX_IMAGE_PIXELS
+        value: "40000000"
+      - key: MAX_IMAGES_PER_PROJECT
+        value: "20"
+      - key: MAX_ACTIVE_PROJECTS
+        value: "10"
+      - key: MAX_SCENES_PER_GENERATION_REQUEST
+        value: "5"
+      - key: MAX_CONCURRENT_GENERATIONS
+        value: "1"
+
+      # Vercel gives every preview deployment a NEW hostname, so a static
+      # allow-list would break on each branch build. This regex keeps previews
+      # and production working; localhost stays in CORS_ORIGINS.
+      - key: CORS_ORIGIN_REGEX
+        value: ^https://[a-z0-9-]+(\.git-[a-z0-9-]+)?\.vercel\.app$
+
+      # --- Secrets: set in the Render dashboard, never in this file ---------
+      # The shared API key the frontend sends as X-API-Key. Must equal
+      # NEXT_PUBLIC_API_KEY in the Vercel frontend project.
+      - key: API_ACCESS_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: MAGIC_HOUR_API_KEY
+        sync: false
+      # Optional: JSON2Video also needs PUBLIC_BASE_URL below.
+      - key: JSON2VIDEO_API_KEY
+        sync: false
+      # This service's own public URL, e.g. https://cineestate-api.onrender.com
+      # Required for JSON2Video, which downloads each source photo over HTTP.
+      - key: PUBLIC_BASE_URL
+        sync: false
+
+      # --- Uncomment when a persistent disk is attached ---------------------
+      # - key: STORAGE_DIR
+      #   value: /var/data/storage

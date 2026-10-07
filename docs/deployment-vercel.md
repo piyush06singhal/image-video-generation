@@ -1,5 +1,11 @@
 # Deploying CinéEstate to Vercel
 
+> **This is the alternative topology.** The recommended setup puts the backend on a
+> long-lived host and keeps only the frontend on Vercel, because video rendering,
+> a persistent project tree and in-process generation jobs do not fit serverless
+> functions. See [`deployment-render.md`](deployment-render.md) first; the
+> [Serverless reality check](#serverless-reality-check) below explains the trade-off.
+
 Both apps deploy to Vercel as **two separate projects** — the Next.js frontend and the
 FastAPI backend — with the frontend pointed at the backend by a build-time environment
 variable.

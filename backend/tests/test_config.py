@@ -8,6 +8,7 @@ Two real cross-machine bugs live here:
   command started from the repository root wrote projects somewhere else entirely.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -147,3 +148,90 @@ def test_auto_primary_name_and_instance_agree(monkeypatch):
     name = factory.resolve_video_provider_name()
     built = factory.build_video_provider()
     assert built.get_provider_name() == name
+
+
+# ---------------------------------------------------------------------------
+# CORS origins that are not stable
+# ---------------------------------------------------------------------------
+#
+# Vercel assigns a new hostname to every preview deployment, so the frontend on
+# Vercel and the backend elsewhere cannot rely on a static allow-list.
+
+# The value recommended in render.yaml and docs/deployment-render.md.
+VERCEL_ORIGIN_REGEX = r"^https://[a-z0-9-]+(\.git-[a-z0-9-]+)?\.vercel\.app$"
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://cineestate.vercel.app",
+        "https://cineestate-git-main-piyush.vercel.app",
+        "https://image-video-generation-abc123.vercel.app",
+    ],
+)
+def test_vercel_regex_matches_production_and_preview_origins(origin):
+    assert re.match(VERCEL_ORIGIN_REGEX, origin), origin
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://evil.com",
+        "http://cineestate.vercel.app",          # http, not https
+        "https://cineestate.vercel.app.evil.com",  # suffixed, not anchored
+        "https://notvercel.app",
+    ],
+)
+def test_vercel_regex_rejects_other_origins(origin):
+    assert not re.match(VERCEL_ORIGIN_REGEX, origin), origin
+
+
+def test_cors_regex_is_wired_into_the_app():
+    """The setting must actually reach CORSMiddleware.
+
+    It is read at middleware construction, so a typo would silently disable the
+    regex and every Vercel preview build would be blocked by CORS — which the
+    browser reports as a dead backend.
+    """
+    from starlette.middleware.cors import CORSMiddleware
+
+    from app.main import app
+
+    cors = [m for m in app.user_middleware if m.cls is CORSMiddleware]
+    assert cors, "CORSMiddleware is not registered"
+    kwargs = cors[-1].kwargs
+    assert "allow_origin_regex" in kwargs
+    # Unset must normalise to None, never to "" (which would match nothing) and
+    # never to a wildcard.
+    assert kwargs["allow_origin_regex"] == (settings.CORS_ORIGIN_REGEX or None)
+    assert "*" not in (kwargs["allow_origins"] or [])
+
+
+def test_cors_regex_admits_a_preview_origin_through_real_middleware():
+    """End-to-end proof that the recommended regex works in CORSMiddleware."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from starlette.middleware.cors import CORSMiddleware
+
+    preview_app = FastAPI()
+
+    @preview_app.get("/api/health")
+    async def _health():
+        return {"ok": True}
+
+    preview_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[],
+        allow_origin_regex=VERCEL_ORIGIN_REGEX,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    client = TestClient(preview_app)
+    allowed = "https://cineestate-git-main-piyush.vercel.app"
+    resp = client.get("/api/health", headers={"Origin": allowed})
+    assert resp.headers.get("access-control-allow-origin") == allowed
+
+    blocked = client.get("/api/health", headers={"Origin": "https://evil.com"})
+    assert "access-control-allow-origin" not in blocked.headers

@@ -463,39 +463,58 @@ npm run build
 
 ## Deployment
 
-### Vercel (frontend + backend)
+### Recommended: backend on Render, frontend on Vercel
+
+This backend does not belong on a serverless platform. It renders video with FFmpeg
+for minutes at a time, keeps a project tree on disk and scans it at startup, and holds
+in-process `asyncio` generation jobs. A long-lived web service does all three normally;
+a serverless function formally cannot, because its filesystem is ephemeral, its
+execution window is bounded, and its instances share no state.
+
+1. **Backend → Render.** New → Blueprint → pick this repository.
+   [`render.yaml`](render.yaml) defines the service; Render prompts for the secrets
+   marked `sync: false`. Copy the resulting `https://<name>.onrender.com` URL.
+2. **Frontend → Vercel.** Set `NEXT_PUBLIC_API_URL` to that URL and
+   `NEXT_PUBLIC_API_KEY` to the same value as the backend's `API_ACCESS_KEY`, then
+   redeploy — `NEXT_PUBLIC_*` is inlined at build time.
+3. **Set `PUBLIC_BASE_URL`** on the Render service to its own URL. This is what lets
+   the JSON2Video renderer download source photos — impossible from localhost.
+
+CORS needs no manual work here: the blueprint sets `CORS_ORIGIN_REGEX` to admit every
+`*.vercel.app` origin, which is required because **Vercel assigns a new hostname to
+every preview deployment** and a static allow-list would break on each branch build.
+
+Full walkthrough, free-tier limits and troubleshooting:
+[`docs/deployment-render.md`](docs/deployment-render.md).
+
+> Render's **free** instances cannot attach a persistent disk and sleep after ~15 idle
+> minutes, so projects do not survive a restart. That is fine for evaluating the
+> pipeline in one sitting. Attaching a disk (paid instance) and setting
+> `STORAGE_DIR=/var/data/storage` makes the project store durable.
+
+### Alternative: everything on Vercel
 
 ```bash
 vercel login          # once; the CLI stores credentials outside the repository
 bash scripts/deploy_vercel.sh
 ```
 
-One command deploys both apps and wires them together:
+One command deploys both apps and wires them together: backend first, configuration
+pushed from `backend/.env` without printing values, `PUBLIC_BASE_URL` set to the
+backend's own URL, the frontend built against it with a matching `NEXT_PUBLIC_API_KEY`,
+then `CORS_ORIGINS` widened and the backend redeployed, and finally `/api/health`
+probed. Project names, scope and the CLI binary are overridable — see the variables at
+the top of [`scripts/deploy_vercel.sh`](scripts/deploy_vercel.sh), and
+[`docs/deployment-vercel.md`](docs/deployment-vercel.md) for the manual steps.
 
-1. deploys the backend (`backend/` → the `cineestate-api` project) and captures its URL,
-2. pushes the backend configuration from `backend/.env` — keys are transferred, never printed,
-3. sets `PUBLIC_BASE_URL` to the deployed backend URL, which is what finally lets the
-   JSON2Video renderer fetch the source photos (impossible from localhost),
-4. points the frontend at that backend with `NEXT_PUBLIC_API_URL` and the matching
-   `NEXT_PUBLIC_API_KEY`, then deploys it (`frontend/` → `cineestate`),
-5. sets `CORS_ORIGINS` to the frontend origin and redeploys the backend, so the two
-   sites can actually talk to each other,
-6. probes `/api/health` and prints both URLs.
-
-Project names, scopes and the Vercel binary are overridable — see the variables at the
-top of [`scripts/deploy_vercel.sh`](scripts/deploy_vercel.sh). Full constraints and
-manual steps: [`docs/deployment-vercel.md`](docs/deployment-vercel.md).
-
-**What works on Vercel:** the whole studio workflow — project creation, image upload,
-AI scene analysis, planning, clip generation via Magic Hour, inspection and evaluation.
-Storage is redirected to `/tmp` automatically (detected at startup), and `/api/health`
-reports `"is_serverless": true` so you can tell which environment you are talking to.
+**What works:** the whole studio workflow — project creation, image upload, AI scene
+analysis, planning, clip generation via Magic Hour, inspection and evaluation. Storage
+is redirected to `/tmp` automatically, and `/api/health` reports
+`"is_serverless": true` so you can tell which environment you are talking to.
 
 **What does not:** durable media. Vercel functions get an ephemeral filesystem and a
 bounded execution window, so a project that exists in one request may not exist in the
-next, and a long FFmpeg assembly can exceed the function timeout. Treat a Vercel
-backend as a demo and evaluation surface; persistent deployments need durable storage
-and a long-running worker. The frontend has no such limitation.
+next, and a long FFmpeg assembly can exceed the function timeout.
 
 ---
 
@@ -507,7 +526,8 @@ For exhaustive technical reference and evaluation preparation, consult the `/doc
 | :--- | :--- |
 | [`docs/architecture.md`](docs/architecture.md) | Deep architectural specifications, module responsibilities, and data models. |
 | [`docs/api.md`](docs/api.md) | Complete REST API endpoint reference with request/response payloads. |
-| [`docs/deployment-vercel.md`](docs/deployment-vercel.md) | Vercel deployment: architecture constraints, environment variables, and verification. |
+| [`docs/deployment-render.md`](docs/deployment-render.md) | **Recommended** topology: backend on Render, frontend on Vercel — setup, persistent storage, and troubleshooting. |
+| [`docs/deployment-vercel.md`](docs/deployment-vercel.md) | Alternative: both apps on Vercel, with the serverless constraints stated up front. |
 | [`docs/viva.md`](docs/viva.md) | Viva and technical-defense questions with implementation-grounded answers. |
 | [`docs/future-upgrades.md`](docs/future-upgrades.md) | Future upgrades, academic boundaries, scope constraints, and explicit non-goals. |
 | [`docs/final-demo.md`](docs/final-demo.md) | End-to-end live demonstration and evaluation script. |

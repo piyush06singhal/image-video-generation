@@ -110,6 +110,10 @@ app.add_middleware(
     # Never fall back to a wildcard: allow_credentials=True with "*" is rejected by
     # browsers and, where accepted, would let any origin drive the API.
     allow_origins=settings.CORS_ORIGINS if isinstance(settings.CORS_ORIGINS, list) else [],
+    # Catches origins that have no stable hostname — every Vercel preview build
+    # gets a fresh URL. Empty string is normalised to None so an unset variable
+    # cannot accidentally match everything.
+    allow_origin_regex=settings.CORS_ORIGIN_REGEX or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -177,6 +177,19 @@ class Settings(BaseSettings):
         "http://localhost:8000",
         "http://127.0.0.1:8000",
     ]
+    # Optional regex for origins whose hostname is not stable.
+    #
+    # Vercel assigns a NEW url to every preview deployment
+    # (``<project>-git-<branch>-<user>.vercel.app``), so a static allow-list breaks
+    # on every branch build and the failure looks like a dead backend. With the
+    # frontend on Vercel and the backend elsewhere this is the normal case, so the
+    # regex is the practical way to keep previews working.
+    #
+    # This is not a security boundary: the browser never attaches the shared key
+    # on its own, and ``NEXT_PUBLIC_API_KEY`` is inlined into the public frontend
+    # bundle anyway. Restrict this if you add real authentication.
+    # Example: ``^https://[a-z0-9-]+(\.git-[a-z0-9-]+)?\.vercel\.app$``
+    CORS_ORIGIN_REGEX: Optional[str] = None
 
     @field_validator("STORAGE_DIR", mode="before")
     @classmethod
