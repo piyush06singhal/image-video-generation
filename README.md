@@ -143,15 +143,20 @@ Everything is environment-driven. The templates are the authoritative reference:
 
 A per-project `render_options.json` controls the look: frame shape and quality, pacing,
 camera variety, transitions, titles, colour grade and score. Both the render and assembly
-stages read it, so regenerating reproduces the same style. Five presets ship built in:
+stages read it, so regenerating reproduces the same style. Five presets ship built in, each
+a complete option set so one can be applied atomically and then tweaked coherently:
 
-| Preset | Character |
-| :--- | :--- |
-| `cinematic_luxury` | Warm grade, full titles, blur dissolves, composed score |
-| `modern_minimal` | Cool grade, restrained motion, hard cuts |
-| `energetic_reel` | Faster pacing, bolder motion, vertical framing |
-| `documentary_tour` | Neutral grade, room labels and counter, steady moves |
-| `quick_draft` | Fastest path to a watchable cut, minimal effects |
+| Preset | Grade | Motion and pace | Transition | Score |
+| :--- | :--- | :--- | :--- | :--- |
+| `cinematic_luxury` | Warm luxury, vignette, grain, bloom | Balanced · 4.5 s · 30 fps | Crossfade 0.6 s | Ambient |
+| `modern_minimal` | Cool modern, no vignette or grain | Subtle · 4.0 s · 30 fps | Crossfade 0.5 s | Minimal piano |
+| `energetic_reel` | Cinematic teal, vignette, grain, bloom | Bold · 3.0 s · **9:16** | Slide left 0.4 s | Uplifting |
+| `documentary_tour` | Natural, no grade | Subtle · 6.0 s · 24 fps | Crossfade 0.5 s | Off |
+| `quick_draft` | Natural, no grade | Subtle · 3.0 s, effects off | Straight cut 0.3 s | Off |
+
+Room labels are on for every preset except `quick_draft`, the room counter is off for
+`documentary_tour` and `quick_draft`, and `quick_draft` also disables depth parallax and
+motion blur so a preview renders in a fraction of the time.
 
 Changing a look-only option flags the assembled video as outdated rather than silently
 leaving a stale file in place.
