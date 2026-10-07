@@ -92,6 +92,33 @@ class Settings(BaseSettings):
     # JSON2Video provider reports itself as unconfigured and the pipeline degrades
     # to the local provider instead of failing.
     PUBLIC_BASE_URL: Optional[str] = None
+
+    # Magic Hour image-to-video (generative alternative / fallback). Magic Hour's
+    # single-shot REST API runs a diffusion video model over one still, so the
+    # camera genuinely moves — at the cost of synthesising new pixels, which can
+    # drift from the listing. Unlike JSON2Video it needs no public URL: the photo
+    # is uploaded through /v1/files/upload-urls, so it works from localhost with
+    # no tunnel. A missing key, exhausted credits, auth failure or timeout all
+    # degrade to the local renderer instead of failing the walkthrough.
+    MAGIC_HOUR_API_KEY: Optional[str] = None
+    MAGIC_HOUR_API_URL: str = "https://api.magichour.ai/v1"
+    # Pinned model, e.g. "kling-3.0", "ltx-2.5", "veo3.1". Unset means "let Magic
+    # Hour use the model this account is entitled to" (paid -> kling-3.0, free ->
+    # ltx-2.5), which is the safest default for an unknown plan.
+    MAGIC_HOUR_MODEL: Optional[str] = None
+    # Pinned output frame size: 360p | 480p | 720p | 1080p | 4k. Unset means the
+    # plan's default. A rejection that cites the plan/tier is retried once without
+    # this value, so pinning 1080p cannot dead-end a free-tier key.
+    MAGIC_HOUR_RESOLUTION: Optional[str] = "720p"
+    # Generative model audio is off by default: the assembler owns the soundtrack
+    # (music_engine score + cut accents), so native audio would double up.
+    MAGIC_HOUR_AUDIO: bool = False
+    MAGIC_HOUR_POLL_INTERVAL_SECONDS: float = 5.0
+    # Generative clips take minutes to render, so the poll budget is generous.
+    MAGIC_HOUR_TIMEOUT_SECONDS: float = 900.0
+    MAGIC_HOUR_MAX_RETRIES: int = 3
+    MAGIC_HOUR_BACKOFF_SECONDS: float = 2.0
+
     # Free-tier Veo projects are burst-sensitive. Keep one remote generation
     # in flight by default; deployments with paid quota can raise this safely.
     MAX_CONCURRENT_GENERATIONS: int = 1

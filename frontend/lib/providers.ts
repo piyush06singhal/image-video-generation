@@ -1,8 +1,9 @@
 /**
  * Presentation helpers for the image-to-video engines.
  *
- * Phase 4 is provider-swappable (`auto` | `json2video` | `gemini_veo` | `kenburns`),
- * so the UI must never hardcode an engine name. It also has to be able to tell when a
+ * Phase 4 is provider-swappable
+ * (`auto` | `json2video` | `magic_hour` | `gemini_veo` | `kenburns`), so the UI
+ * must never hardcode an engine name. It also has to be able to tell when a
  * clip came from the *local fallback* rather than the configured provider — that
  * happens whenever a remote provider is rate-limited, out of quota, blocked, or
  * misconfigured, and it is the single most confusing thing for a user otherwise.
@@ -37,6 +38,12 @@ const ENGINES: Record<string, RenderEngine> = {
     label: "JSON2Video",
     description: "Cloud render over the real photos",
     kind: "plate",
+  },
+  magic_hour: {
+    id: "magic_hour",
+    label: "Magic Hour",
+    description: "Generative image-to-video (Kling / LTX / Veo)",
+    kind: "generative",
   },
   local_kenburns: {
     id: "local_kenburns",

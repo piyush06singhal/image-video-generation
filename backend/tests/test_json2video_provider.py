@@ -277,6 +277,7 @@ def test_auto_prefers_json2video_only_when_fully_configured(monkeypatch):
     monkeypatch.setattr(settings, "GEMINI_API_KEY", None)
     monkeypatch.setattr(settings, "GOOGLE_API_KEY", None)
     monkeypatch.setattr(settings, "VIDEO_API_KEY", None)
+    monkeypatch.setattr(settings, "MAGIC_HOUR_API_KEY", None)
 
     # Key present but no public base URL -> cannot fetch photos -> not usable.
     monkeypatch.setattr(settings, "JSON2VIDEO_API_KEY", "test-key")

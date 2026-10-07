@@ -96,10 +96,11 @@ The following diagram details the end-to-end pipeline architecture, data contrac
 - **Conservative Camera Motion Selection:** Maps scene types to restrained camera trajectories (e.g. forward dolly for foyers, lateral pans for kitchens, subtle static drift for bathrooms) while using direct preservation and anti-distortion constraints in the Veo prompt. The current Veo 3.1 integration does not send a separate negative-prompt field.
 
 ### Phase 4: Image-to-Video Generation
-- **Pluggable Provider Architecture:** `VIDEO_PROVIDER` selects the motion engine at runtime (`auto` | `json2video` | `gemini_veo` | `kenburns`). Providers share one contract, so the pipeline is identical regardless of engine.
+- **Pluggable Provider Architecture:** `VIDEO_PROVIDER` selects the motion engine at runtime (`auto` | `json2video` | `magic_hour` | `gemini_veo` | `kenburns`). Providers share one contract, so the pipeline is identical regardless of engine.
 - **Generative Video Synthesis (Veo):** Google Gemini Veo 3.1 synthesizes 4-second clips from single static photographs guided by the scripted motion prompts and direct preservation constraints. Safety prompt engineering uses direct preservation and anti-distortion instructions (`preserve furniture, walls, lighting, and geometry; no distortion`) to reduce structural artifacts. The current Veo 3.1 integration does not send a separate negative-prompt field.
 - **Local Cinematic Motion (Ken Burns):** Renders a genuine camera move — pan, push-in, pull-back, subtle drift — over the *real* photograph using a sub-pixel affine "virtual camera" in OpenCV and FFmpeg. Runs on CPU with no API, no quota and no cost, and is deterministic, so the property can never be hallucinated or refurnished.
-- **Cloud Rendering (JSON2Video):** Composites the real photos with pan/zoom, easing and cross-dissolves through the JSON2Video rendering API — generous free tier (600s of rendered output) and no local GPU/CPU load. Requires `JSON2VIDEO_API_KEY` and a publicly reachable `PUBLIC_BASE_URL`, because the renderer downloads each source photo by URL.
+- **Cloud Render over the Real Photos (JSON2Video):** Composites the real photos with pan/zoom, easing and cross-dissolves through the JSON2Video rendering API — generous free tier (600s of rendered output) and no local GPU/CPU load. Requires `JSON2VIDEO_API_KEY` and a publicly reachable `PUBLIC_BASE_URL`, because the renderer downloads each source photo by URL.
+- **Generative Cloud Fallback (Magic Hour):** Runs a diffusion video model (Kling / LTX / Veo / Seedance / Wan) over a single still through Magic Hour's one-shot REST API, so the camera genuinely moves. Unlike JSON2Video it needs **no public URL and no tunnel** — the photo is uploaded through `/v1/files/upload-urls` and referenced by `file_path`, so it works from `localhost`. Because it is generative it can drift from the listing, which is why it is opt-in and sits behind the plate-based renderers in `auto`; the requested duration is snapped to the values the selected model actually accepts, and a plan/tier rejection is retried once without the pinned resolution so a free-tier key is never dead-ended. Because Magic Hour mirrors the input still's aspect ratio, the photo is centre-cropped to the export frame *before* upload, so the model renders the shape that actually ships instead of a clip the assembler has to crop and upscale.
 - **Graceful Degradation:** Any remote provider that is rate-limited, out of quota, content-blocked, timed out or misconfigured automatically falls back to the local renderer, so a walkthrough is always produced.
 - **Video Stream Verification:** Probes and decodes each generated clip before assembly to confirm it is readable and has expected metadata such as codec, resolution, and frame rate.
 
@@ -294,15 +295,17 @@ problem, so Phase 4 is swappable:
 
 | `VIDEO_PROVIDER` | Motion source | Cost / limits | Property accuracy |
 | :--- | :--- | :--- | :--- |
+| `json2video` | Cloud render of the real photos (pan/zoom + transitions) | Free tier ≈ 600s of render; needs `PUBLIC_BASE_URL` | Exact — pixels are the actual listing |
+| `magic_hour` | Generative diffusion over one still (Kling / LTX / Veo) | Credit-based per second of output; no public URL needed | Diffusion can invent furniture, geometry and finishes |
 | `gemini_veo` | Generative diffusion (Veo) | Hardest free tier; 1 request at a time | Diffusion can invent furniture, geometry and finishes |
-| `json2video` | Cloud render of the real photos (pan/zoom + transitions) | Free tier ≈ 600s of render | Exact — pixels are the actual listing |
 | `kenburns` | Local render of the real photos (OpenCV + FFmpeg) | Free, unlimited, offline | Exact — pixels are the actual listing |
 | `auto` (default) | Best configured remote, local fallback | — | Degrades rather than failing |
 
-Run `VIDEO_PROVIDER=kenburns` for a fully offline walkthrough with zero API calls, or
-set `JSON2VIDEO_API_KEY` + `PUBLIC_BASE_URL` to offload rendering to the cloud. In
-`auto` mode a quota, rate-limit, content-block or misconfiguration error degrades the
-affected clip to the local renderer instead of failing the job.
+Run `VIDEO_PROVIDER=kenburns` for a fully offline walkthrough with zero API calls, set
+`JSON2VIDEO_API_KEY` + `PUBLIC_BASE_URL` to offload rendering to the cloud, or set
+`MAGIC_HOUR_API_KEY` for generative motion with no tunnel required. In `auto` mode a
+quota, rate-limit, content-block or misconfiguration error degrades the affected clip
+to the local renderer instead of failing the job.
 
 Free-tier quotas are provider-controlled and cannot guarantee unlimited or immediate video generation. See [`docs/future-upgrades.md`](docs/future-upgrades.md) before onboarding multiple users.
 

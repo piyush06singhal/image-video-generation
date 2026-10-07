@@ -93,6 +93,7 @@ def test_factory_selects_configured_provider(monkeypatch):
     monkeypatch.setattr(settings, "VIDEO_FALLBACK_TO_LOCAL", True)
     monkeypatch.setattr(settings, "JSON2VIDEO_API_KEY", None)
     monkeypatch.setattr(settings, "PUBLIC_BASE_URL", None)
+    monkeypatch.setattr(settings, "MAGIC_HOUR_API_KEY", None)
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "test-gemini-key")
     provider = build_video_provider()
     assert isinstance(provider, FallbackProvider)
