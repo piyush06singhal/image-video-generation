@@ -1,9 +1,15 @@
+# Everything the serverless function does not need. The depth model is ~100 MB
+# and the local renderer cannot finish inside a serverless time budget anyway.
 venv/
 tests/
 test_images/
-storage/projects/*
-storage/uploads/*
-storage/processed/*
+models/
+storage/
+docs/
+scripts/
 .env
+.env.*
 __pycache__/
 *.pyc
+.pytest_cache/
+.vercel/
