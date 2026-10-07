@@ -5,6 +5,7 @@ from PIL import Image, ImageFilter, ImageOps, ImageStat
 
 from app.core.config import settings
 from app.core.errors import (
+    AppException,
     ImageCorruptedError,
     ImageTooLargeError,
     ImageTooSmallError,
@@ -13,6 +14,11 @@ from app.core.errors import (
 from app.core.logging import logger
 from app.schemas.scene import ImageQualityResult, QualityStatus
 from app.utils.file_utils import calculate_sha256
+
+
+# Decode guard: refuse to rasterise a canvas above the configured pixel cap even if
+# a code path reaches a decode without passing validate_and_extract_metadata first.
+Image.MAX_IMAGE_PIXELS = settings.MAX_IMAGE_PIXELS
 
 
 class ImagePreprocessor:
@@ -76,6 +82,22 @@ class ImagePreprocessor:
         # 4. Dimension checks
         if width < self.min_width or height < self.min_height:
             raise ImageTooSmallError(width, height, self.min_width, self.min_height)
+
+        # A tiny file can still declare an enormous canvas (a decompression bomb):
+        # decoding it allocates width*height*4 bytes, so the byte limit alone does not
+        # protect the server. Reject before any full decode (the panorama seam check
+        # below and the thumbnail/analysis passes all decode the whole image).
+        max_pixels = settings.MAX_IMAGE_PIXELS
+        if width * height > max_pixels:
+            raise AppException(
+                code="IMAGE_TOO_LARGE",
+                message=(
+                    f"Image is {width}x{height} ({width * height / 1_000_000:.0f} MP), above "
+                    f"the {max_pixels // 1_000_000} MP limit. Oversized canvases are rejected "
+                    "before decoding because they can exhaust server memory."
+                ),
+                status_code=413,
+            )
 
         aspect_ratio = round(float(width) / float(height), 4)
         sha256_hash = calculate_sha256(file_bytes)

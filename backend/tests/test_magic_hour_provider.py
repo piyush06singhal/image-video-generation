@@ -491,6 +491,45 @@ async def test_unconfigured_magic_hour_degrades_to_local_render(tmp_path, monkey
     assert ok, "degraded clip should be a decodable video"
 
 
+@pytest.mark.asyncio
+async def test_plan_downgrade_does_not_consume_the_retry_budget(tmp_path, monkeypatch):
+    """With MAGIC_HOUR_MAX_RETRIES=1 the downgrade used to log the retry and then
+    raise without ever making it, because the retry consumed the attempt budget."""
+    monkeypatch.setattr(settings, "MAGIC_HOUR_POLL_INTERVAL_SECONDS", 0.01)
+    monkeypatch.setattr(settings, "MAGIC_HOUR_MAX_RETRIES", 1)
+    created: list = []
+    state = {"jobs": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url.endswith("/files/upload-urls"):
+            return httpx.Response(200, json={"items": [{"upload_url": "https://upload.example.com/s", "file_path": UPLOADED_PATH}]})
+        if request.method == "PUT":
+            return httpx.Response(200, content=b"")
+        if url.endswith("/image-to-video"):
+            created.append(json.loads(request.content))
+            state["jobs"] += 1
+            if state["jobs"] == 1:
+                return httpx.Response(
+                    422,
+                    json={"code": "unprocessable_entity", "message": "resolution 720p is not available for your subscription tier"},
+                )
+            return httpx.Response(200, json={"id": JOB_ID, "credits_charged": 96})
+        if url.startswith("https://cdn.example.com/"):
+            return httpx.Response(200, content=CLIP_BYTES)
+        return httpx.Response(200, json=COMPLETED)
+
+    out = tmp_path / "c.mp4"
+    result = await _provider(_client(handler)).generate_clip(
+        _make_source(tmp_path), "p", None, 4.0, "slow_forward", out
+    )
+
+    assert state["jobs"] == 2, "the downgrade retry must happen even with a budget of 1"
+    assert "resolution" not in created[1]
+    assert result.provider_job_id == JOB_ID
+    assert out.read_bytes() == CLIP_BYTES
+
+
 # ── export-frame cropping ────────────────────────────────────────────────────
 def _make_portrait_source(tmp_path: Path, width: int = 600, height: int = 1000) -> Path:
     """A portrait still, as a phone photo of a listing very often is."""

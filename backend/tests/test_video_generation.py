@@ -452,3 +452,25 @@ def test_api_video_generation_routes(test_project_with_plan):
     data = r.json()["data"]
     assert data["project_id"] == project_id
     assert data["total_scenes"] == 1
+
+
+@pytest.mark.asyncio
+async def test_recover_pending_jobs_skips_unreadable_records(isolated_storage):
+    """This runs in the startup lifespan: one old-schema or hand-edited record must
+    not stop the process from starting (it used to raise straight out of the
+    lifespan and take the whole API down)."""
+    from app.services.video_generation import video_generation_service
+
+    project_id = "project_corrupt_records"
+    isolated_storage.create_project_storage(project_id)
+    isolated_storage.save_project_json(
+        project_id,
+        {"id": project_id, "name": "corrupt", "status": "created", "created_at": "", "updated_at": "", "images": [], "image_count": 0},
+    )
+    isolated_storage.save_generation_json(
+        project_id,
+        {"jobs": [{"job_id": 123, "status": "NOT_A_REAL_STATUS", "scene_id": None}], "clips": []},
+    )
+
+    # Must not raise, and must not take the rest of the projects down with it.
+    await video_generation_service.recover_pending_jobs()

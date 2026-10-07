@@ -209,3 +209,64 @@ def test_serve_original_and_thumbnail_files(client):
     thumb_resp = client.get(f"/api/projects/{project_id}/images/{image_id}/thumbnail")
     assert thumb_resp.status_code == 200
     assert len(thumb_resp.content) > 0
+
+
+def test_oversize_upload_is_rejected_while_streaming(client, monkeypatch):
+    """The size cap must be enforced during the read, not after a body many times the
+    limit has already been pulled into memory."""
+    monkeypatch.setattr(settings, "MAX_IMAGE_SIZE_BYTES", 1024)
+    project_id = client.post("/api/projects", json={"name": "Bounded Read Test"}).json()["data"]["id"]
+
+    # A valid JPEG whose pixel data alone is far above the 1 KB cap.
+    big = create_test_image_bytes(width=1200, height=900)
+    assert len(big) > 1024
+    files = [("files", ("big.jpg", big, "image/jpeg"))]
+
+    resp = client.post(f"/api/projects/{project_id}/images", files=files)
+
+    assert resp.status_code == 413
+    assert resp.json()["error"]["code"] == "IMAGE_TOO_LARGE"
+    # Nothing was persisted for the rejected upload.
+    assert client.get(f"/api/projects/{project_id}").json()["data"]["image_count"] == 0
+
+
+def test_oversize_file_in_a_batch_is_rejected_without_losing_the_rest(client, monkeypatch):
+    # Derive the cap from the two real payloads so exactly one of them exceeds it,
+    # regardless of how well JPEG compresses a flat colour.
+    good = create_test_image_bytes(color=(10, 200, 30))
+    huge = create_test_image_bytes(width=3000, height=1500, color=(200, 10, 30))
+    assert len(good) < len(huge), "the test needs the second file to be the bigger one"
+    monkeypatch.setattr(settings, "MAX_IMAGE_SIZE_BYTES", (len(good) + len(huge)) // 2)
+
+    project_id = client.post("/api/projects", json={"name": "Mixed Batch Test"}).json()["data"]["id"]
+    files = [
+        ("files", ("huge.jpg", huge, "image/jpeg")),
+        ("files", ("good.jpg", good, "image/jpeg")),
+    ]
+
+    resp = client.post(f"/api/projects/{project_id}/images", files=files)
+
+    assert resp.status_code == 201
+    data = resp.json()["data"]
+    assert data["total_received"] == 2
+    assert data["total_accepted"] == 1
+    assert data["total_rejected"] == 1
+    assert data["rejected"][0]["code"] == "IMAGE_TOO_LARGE"
+    assert data["uploaded"][0]["filename"].endswith("good.jpg")
+
+
+def test_oversize_canvas_is_rejected_before_decoding(client, monkeypatch):
+    """A decompression bomb: a few KB can declare a canvas that decodes to gigabytes.
+    The pixel cap must fire before anything rasterises the image."""
+    monkeypatch.setattr(settings, "MAX_IMAGE_PIXELS", 100_000)  # 600x600 = 360k px is over
+    project_id = client.post("/api/projects", json={"name": "Pixel Cap Test"}).json()["data"]["id"]
+
+    small_but_over = create_test_image_bytes(width=600, height=600)
+    files = [("files", ("bomb.jpg", small_but_over, "image/jpeg"))]
+
+    resp = client.post(f"/api/projects/{project_id}/images", files=files)
+
+    assert resp.status_code == 413
+    body = resp.json()["error"]
+    assert body["code"] == "IMAGE_TOO_LARGE"
+    assert "MP" in body["message"]

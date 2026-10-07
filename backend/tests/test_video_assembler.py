@@ -271,3 +271,68 @@ def test_api_assembly_endpoints():
     res_dl = client.get(f"/api/projects/{pid}/final-video/download")
     assert res_dl.status_code == 200
     assert "attachment" in res_dl.headers.get("content-disposition", "")
+
+
+def test_assembly_runs_off_the_event_loop(monkeypatch):
+    """Assembly is minutes of synchronous FFmpeg work. Called inline from the async
+    route it froze the whole server — every other request, including /health — for
+    the duration of the render, so it must be dispatched to a worker thread."""
+    import threading
+
+    from app.schemas.assembly import AssemblyJob
+
+    seen = {}
+
+    def fake_assemble(project_id, request=None):
+        seen["on_main_thread"] = threading.current_thread() is threading.main_thread()
+        return AssemblyJob(job_id="job_probe", project_id=project_id)
+
+    monkeypatch.setattr(video_assembler_service, "assemble_walkthrough", fake_assemble)
+
+    resp = client.post("/api/projects/project_offload_probe/assemble")
+
+    assert resp.status_code == 200
+    assert resp.json()["data"]["job_id"] == "job_probe"
+    assert seen["on_main_thread"] is False, "assembly must not run on the event loop thread"
+
+
+def test_unreadable_plan_marks_final_video_outdated(isolated_storage):
+    """The staleness check must fail closed. An unreadable plan means we cannot prove
+    the video is current, and silently reporting it up to date is exactly the failure
+    this check exists to catch."""
+    from app.schemas.assembly import FinalVideoMetadata
+    from app.services.render_options_service import render_options_service
+
+    pid = "project_stale_probe"
+    isolated_storage.create_project_storage(pid)
+    isolated_storage.save_project_json(
+        pid,
+        {"id": pid, "name": "stale", "status": "created", "created_at": "", "updated_at": "", "images": [], "image_count": 0},
+    )
+    final_dir = isolated_storage.get_project_final_dir(pid)
+    final_dir.mkdir(parents=True, exist_ok=True)
+    (final_dir / "walkthrough.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42placeholder")
+
+    meta = FinalVideoMetadata(
+        project_id=pid,
+        video_url=f"/api/projects/{pid}/final-video/file",
+        download_url=f"/api/projects/{pid}/final-video/download",
+        duration_seconds=2.0,
+        width=640,
+        height=360,
+        file_size_bytes=31,
+        scene_count=1,
+        plan_hash="whatever",
+    )
+    # Pin the options fingerprint so the *plan* branch is the only one that can
+    # decide the outcome — otherwise the test passes for the wrong reason.
+    meta.render_options_hash = render_options_service.get(pid).assembly_signature()
+    isolated_storage.save_final_metadata_json(pid, meta.model_dump(mode="json"))
+
+    # Valid JSON, invalid schema — what a hand edit or schema drift produces.
+    isolated_storage.save_plan_json(pid, {"scenes": "not-a-list"})
+
+    result = video_assembler_service.get_final_metadata(pid)
+
+    assert result is not None
+    assert result.is_outdated is True

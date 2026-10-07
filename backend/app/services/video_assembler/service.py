@@ -172,8 +172,15 @@ class VideoAssemblerService:
                 current_hash = self.compute_plan_fingerprint(plan)
                 if current_hash != meta.plan_hash or plan.plan_version != meta.plan_version:
                     meta.is_outdated = True
-            except Exception:
-                pass
+            except Exception as exc:
+                # Fail closed: an unreadable plan means we cannot prove the video is
+                # current, and reporting a stale walkthrough as up to date is exactly
+                # what this check exists to catch.
+                logger.warning(
+                    f"Could not check the final video for {project_id} against an "
+                    f"unreadable plan ({exc}); marking it outdated."
+                )
+                meta.is_outdated = True
 
         current_options_hash = render_options_service.get(project_id).assembly_signature()
         if meta.render_options_hash != current_options_hash:

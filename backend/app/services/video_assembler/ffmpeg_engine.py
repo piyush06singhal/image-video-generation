@@ -169,8 +169,16 @@ class FFmpegEngine:
             exe = imageio_ffmpeg.get_ffmpeg_exe()
             if exe and os.path.exists(exe):
                 return exe
-        except Exception:
-            pass
+        except Exception as exc:
+            # imageio_ffmpeg is the primary source of the binary. If it cannot
+            # answer (it raises on a broken wheel, or the download never ran), say
+            # so — otherwise the process silently degrades to a bare "ffmpeg",
+            # and the eventual failure is a confusing "No such file or directory"
+            # several layers away from the real cause.
+            logger.warning(
+                f"imageio_ffmpeg could not provide an FFmpeg binary ({exc}); "
+                "falling back to the system 'ffmpeg' on PATH."
+            )
         return "ffmpeg"
 
     # ── low level ────────────────────────────────────────────────────────

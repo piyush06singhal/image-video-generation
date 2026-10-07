@@ -484,8 +484,13 @@ class MagicHourProvider(ImageToVideoProvider):
         used_resolution = payload.get("resolution")
         downgraded = False
         last_error = ""
+        # Counts only consumed attempts — transport errors and 5xx. The plan/tier
+        # downgrade below retries *without* consuming the budget: with the old
+        # counting, MAGIC_HOUR_MAX_RETRIES=1 plus a rejected pinned resolution
+        # would log the downgrade and then raise without ever retrying.
+        attempts_used = 0
 
-        for attempt in range(1, self.max_retries + 1):
+        while attempts_used < self.max_retries:
             resp: Optional[httpx.Response] = None
             try:
                 resp = await client.post(
@@ -532,10 +537,11 @@ class MagicHourProvider(ImageToVideoProvider):
 
                 last_error = f"HTTP {resp.status_code}"
 
-            if attempt < self.max_retries:
-                delay = self.backoff_base * (2 ** (attempt - 1))
+            attempts_used += 1
+            if attempts_used < self.max_retries:
+                delay = self.backoff_base * (2 ** (attempts_used - 1))
                 logger.warning(
-                    f"[magic_hour] submit attempt {attempt}/{self.max_retries} failed "
+                    f"[magic_hour] submit attempt {attempts_used}/{self.max_retries} failed "
                     f"({last_error or 'transport error'}); retrying in {delay:.1f}s"
                 )
                 await asyncio.sleep(delay)

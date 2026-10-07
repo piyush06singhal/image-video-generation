@@ -50,14 +50,25 @@ class VideoGenerationService:
             if not project_dir.is_dir():
                 continue
             project_id = project_dir.name
-            saved_gen = self.storage.load_generation_json(project_id) or {}
-            jobs = [GenerationJob(**j) for j in saved_gen.get("jobs", [])]
+            # One unreadable record must not stop the process from starting: this
+            # runs in the startup lifespan, so an old-schema or hand-edited file
+            # would otherwise brick every restart. Skip loudly instead.
+            try:
+                saved_gen = self.storage.load_generation_json(project_id) or {}
+                jobs = [GenerationJob(**j) for j in saved_gen.get("jobs", [])]
+            except Exception as exc:
+                logger.warning(f"Skipping recovery for {project_id}: unreadable generation records ({exc})")
+                continue
             if not jobs:
                 continue
-            plan_data = self.storage.load_plan_json(project_id)
-            if not plan_data:
+            try:
+                plan_data = self.storage.load_plan_json(project_id)
+                if not plan_data:
+                    continue
+                plan = GenerationPlan(**plan_data)
+            except Exception as exc:
+                logger.warning(f"Skipping recovery for {project_id}: unreadable plan ({exc})")
                 continue
-            plan = GenerationPlan(**plan_data)
             scenes = {scene.scene_id: scene for scene in plan.scenes}
             changed = False
             for job in jobs:

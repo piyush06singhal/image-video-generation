@@ -1,10 +1,13 @@
-from typing import List, Optional
+import asyncio
+from typing import List, Optional, Tuple
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, PlainTextResponse
 
+from app.core.config import settings
 from app.core.errors import (
     AppException,
     DuplicateImageError,
+    ImageTooLargeError,
     ProjectNotFoundError,
 )
 from app.schemas.assembly import (
@@ -28,7 +31,7 @@ from app.schemas.generation import (
     ProjectGenerationOverview,
     RegenerateSceneRequest,
 )
-from app.schemas.image import ImageBatchUploadResult, ImageMetadata
+from app.schemas.image import ImageBatchUploadResult, ImageMetadata, RejectedImage
 from app.schemas.plan import GenerationPlan, PlanUpdateRequest
 from app.schemas.project import ProjectCreate, ProjectResponse
 from app.schemas.render_options import RenderOptions, RenderPresetInfo, RenderOptionsUpdate
@@ -95,12 +98,47 @@ async def upload_project_images(
             status_code=400,
         )
 
-    # Read bytes for all uploaded files
-    files_data = []
+    # Read each upload with a hard cap at MAX_IMAGE_SIZE_BYTES. The limit used to be
+    # enforced only after the whole body had been read into memory, so a client could
+    # declare a small image and stream gigabytes into RAM before being refused.
+    max_bytes = settings.MAX_IMAGE_SIZE_BYTES
+    files_data: List[Tuple[str, bytes]] = []
+    oversize_rejections: List[RejectedImage] = []
     for file in files:
-        content = await file.read()
         filename = file.filename or "image.jpg"
-        files_data.append((filename, content))
+        buffer = bytearray()
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            buffer.extend(chunk)
+            if len(buffer) > max_bytes:
+                break
+        if len(buffer) > max_bytes:
+            oversize = ImageTooLargeError(len(buffer), max_bytes)
+            if len(files) == 1:
+                # Keep the single-file contract: a direct 413 rather than a batch report.
+                raise oversize
+            oversize_rejections.append(
+                RejectedImage(
+                    filename=filename,
+                    code="IMAGE_TOO_LARGE",
+                    message=oversize.message,
+                )
+            )
+            continue
+        files_data.append((filename, bytes(buffer)))
+
+    if not files_data and oversize_rejections:
+        # Every file in the batch was over the limit: report it the same way the
+        # batch pipeline reports an all-rejected upload.
+        first = oversize_rejections[0]
+        raise AppException(
+            code=first.code,
+            message=first.message,
+            status_code=413,
+            details={"rejected": [r.model_dump() for r in oversize_rejections]},
+        )
 
     # If exactly one file was uploaded, we want direct error codes (413, 415, 400) on failure
     if len(files_data) == 1:
@@ -128,6 +166,13 @@ async def upload_project_images(
 
     # Run batch processing
     result = project_service.add_images(project_id=project_id, files_data=files_data)
+
+    # Fold files rejected for size (caught before the batch pipeline saw them) back
+    # into the batch report so it stays complete and honest about what arrived.
+    if oversize_rejections:
+        result.rejected.extend(oversize_rejections)
+        result.total_rejected += len(oversize_rejections)
+        result.total_received = len(files)
 
     # If all files in a batch were rejected and total_received == 1, exception was already raised.
     # If all files in multi-batch failed, raise the first error for clarity
@@ -401,7 +446,7 @@ async def get_scene_clip_file(project_id: str, scene_id: str):
 @router.post("/{project_id}/local-slideshow", response_model=ApiResponse[FinalVideoMetadata])
 async def create_local_slideshow(project_id: str):
     """Create a local image slideshow fallback without calling a remote AI provider."""
-    metadata = local_slideshow_service.create(project_id)
+    metadata = await asyncio.to_thread(local_slideshow_service.create, project_id)
     return ApiResponse.success_response(metadata)
 
 
@@ -419,7 +464,11 @@ async def assemble_project_walkthrough(
     Validates clips, normalizes resolution/framerate, applies approved transitions,
     and extracts final verified metadata.
     """
-    job = video_assembler_service.assemble_walkthrough(project_id, request)
+    # Assembly is minutes of synchronous FFmpeg work: run it off the event loop or it
+    # freezes every other request, including /health, for the whole render.
+    job = await asyncio.to_thread(
+        video_assembler_service.assemble_walkthrough, project_id, request
+    )
     return ApiResponse.success_response(job)
 
 
