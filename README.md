@@ -1,543 +1,286 @@
-# CinéEstate: Image-to-Video Walkthrough Generation for Real Estate
+# CinéEstate
 
-[![Backend](https://img.shields.io/badge/Backend-FastAPI_0.115+-009688.svg?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com)
-[![Frontend](https://img.shields.io/badge/Frontend-Next.js_16_(React_19)-000000.svg?style=flat-square&logo=next.js)](https://nextjs.org)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg?style=flat-square&logo=python)](https://python.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0%2B-3178C6.svg?style=flat-square&logo=typescript)](https://www.typescriptlang.org)
-[![Test Suite](https://img.shields.io/badge/Tests-run%20locally%20with%20pytest-22c55e.svg?style=flat-square)]()
-[![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
+**Turn an unordered set of real-estate photographs into a cinematic video walkthrough.**
 
-An end-to-end, multi-stage generative pipeline and interactive inspection platform that transforms unordered collections of 2D real estate photographs into coherent, architecturally ordered, cinematographic video walkthroughs and immersive spatial viewing experiences.
+CinéEstate is an end-to-end pipeline and inspection studio: it validates and de-duplicates
+uploaded photographs, understands them with a vision language model, orders them into a
+plausible tour, renders each room as a short moving shot, and assembles the result into a
+graded, scored walkthrough — with a viewer for inspecting 360° panoramas and a rubric for
+evaluating the output.
 
----
-
-## Executive Summary
-
-Traditional real estate listings rely on disconnected photo galleries that require buyers to mentally reconstruct spatial layouts, or expensive 3D Matterport/LIDAR hardware requiring hundreds of multi-view captures. 
-
-**CinéEstate** bridges this gap using an academic vision-language and video diffusion architecture:
-1. **Automated Structural & Semantic Ingestion:** Ingests unordered photographs within configurable project limits, performs byte-level integrity checks, SHA-256 deduplication, and panorama detection signals.
-2. **Multimodal Scene Understanding (VLM):** Uses Google Gemini 2.5 Flash to classify architectural room types, evaluate lighting, detect door connections, and quantify image quality.
-3. **Topological Scene Graph Planning:** Constructs a directed graph and applies deterministic ordering heuristics to suggest a natural walkthrough flow (`Exterior` → `Foyer` → `Living` → `Kitchen` → `Private Quarters` → `Outdoor`). The planner does not create source images for missing rooms.
-4. **Motion Synthesis via a Pluggable Provider Layer:** Translates planned camera trajectories (slow forward dollies, kitchen pans) into 4-second video clips through one of four interchangeable backends — a cloud renderer that pans over the real photos (JSON2Video), generative diffusion over one still (Magic Hour: Kling / LTX / Veo / Seedance), Gemini Veo directly, or a fully local OpenCV Ken Burns renderer. Every provider implements one abstract interface and receives the same grounding constraints ("do not add, remove or move any object"), so the plan, prompts and assembly are independent of which engine renders the pixels.
-5. **Deterministic Video Normalization & Assembly:** Standardizes video streams with FFmpeg using proportional letterbox padding and configurable cuts or short crossfades.
-6. **Dual-Inspection & Quantitative Evaluation:** Delivers an interactive 360° equirectangular canvas / 2D pan-zoom inspector, an automated 4-point verification engine, and a 6-axis human evaluation audit system.
+[![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com)
+[![Frontend](https://img.shields.io/badge/frontend-Next.js%2016%20%C2%B7%20React%2019-000000?style=flat-square&logo=next.js)](https://nextjs.org)
+[![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat-square&logo=python)](https://python.org)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 ---
 
-## System Architecture
+## Overview
 
-The following diagram details the end-to-end pipeline architecture, data contracts, and component boundaries across all six execution phases:
+A photo gallery asks a buyer to reconstruct a property in their head. CinéEstate produces
+the tour instead, without 3D scanning hardware — no Matterport rig, no multi-view capture,
+just the photographs an agent already has.
+
+The design constraint that shapes everything: **the pipeline is deterministic and the
+property must never be hallucinated.** Scene ordering, camera moves, transitions, grading
+and the score are all computed from the photographs and a persisted plan. Only the optional
+generative providers synthesise new pixels, and they are opt-in.
+
+---
+
+## How it works
 
 ```
-                                  ┌────────────────────────────────────────────────────────┐
-                                  │               Next.js 16 Client Frontend               │
-                                  │   (React 19 · Tailwind CSS · Canvas 360° Inspection)   │
-                                  └───────────────────────────┬────────────────────────────┘
-                                                              │ HTTP REST / Multipart
-                                                              ▼
-┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                                 FastAPI Backend Server                                                 │
-│                                                                                                                        │
-│   ┌───────────────────────────────────┐               ┌────────────────────────────────────────────────────────────┐   │
-│   │ Phase 1: Ingestion & Validation   │               │ Phase 2: Multimodal Scene Understanding                    │   │
-│   │ • Pillow verification & EXIF fix  │──────────────▶│ • Gemini 2.5 Flash Zero-Shot VLM Inference                 │   │
-│   │ • SHA-256 duplicate rejection     │   Image Byte  │ • Room Classification (Living, Kitchen, etc.)              │   │
-│   │ • Multi-Signal 360° Pano Detector │    Streams    │ • Illumination & Architectural Feature Analysis            │   │
-│   │ • Isolated filesystem storage     │               │ • Image Quality Scoring (Brightness, Contrast, Sharpness)  │   │
-│   └───────────────────────────────────┘               └─────────────────────────────┬──────────────────────────────┘   │
-│                                                                                     │ Scene Metadata                   │
-│                                                                                     ▼ JSON Schemas                     │
-│   ┌───────────────────────────────────┐               ┌────────────────────────────────────────────────────────────┐   │
-│   │ Phase 4: Cinematic Clip Rendering │               │ Phase 3: Walkthrough Planning & Trajectory Graph           │   │
-│   │ • Pluggable I2V Engine Selection  │◀──────────────│ • Directed Topological Scene Graph Construction            │   │
-│   │ • Prompt grounding & safety locks │ Camera Prompts│ • Hierarchy Sorting (Exterior ➔ Living ➔ Private ➔ Outdoor)│   │
-│   │ • Asynchronous execution queue    │  & Parameters │ • Conservative Camera Motion Planner (Pan/Dolly/Drift)     │   │
-│   │ • Video stream probing/verification│               │ • Plan Fingerprinting & SHA-256 Versioning                 │   │
-│   └─────────────────┬─────────────────┘               └────────────────────────────────────────────────────────────┘   │
-│                     │ Per-Scene                                                                                        │
-│                     │ MP4 Clips                                                                                        │
-│                     ▼                                                                                                  │
-│   ┌───────────────────────────────────┐               ┌────────────────────────────────────────────────────────────┐   │
-│   │ Phase 5: Normalization & Assembly │               │ Phase 6: Immersive Viewer & Evaluation Suite               │   │
-│   │ • FFmpeg cover-crop conform       │──────────────▶│ • 360° Spherical Equirectangular Canvas Viewer            │   │
-│   │ • Configurable aspect/res/fps     │ Walkthrough   │ • 2D Ultra High-Res Bounded Pan/Zoom Mode                  │   │
-│   │ • Branded cards, labels, score    │     Video     │ • 4-Point Automated Verification Checks                    │   │
-│   │ • Multi-Input Crossfade Concaten. │   Artifacts   │ • 6-Axis Human Evaluation & Review Flagging                │   │
-│   │ • Outdated Plan State Invalidator │               │ • Plaintext & JSON Audit Report Exporter                   │   │
-│   └───────────────────────────────────┘               └────────────────────────────────────────────────────────────┘   │
-└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-                                                              │
-                                                              ▼
-                                  ┌────────────────────────────────────────────────────────┐
-                                  │            Persistent Filesystem Storage               │
-                                  │   (Originals · Processed · Video Clips · Walkthrough)  │
-                                  └────────────────────────────────────────────────────────┘
+photographs
+    │
+    ▼
+1  Ingest      validate · EXIF-normalise · SHA-256 de-duplicate · panorama detection
+    │
+    ▼
+2  Understand  Gemini vision → room type, lighting, features, quality score
+    │
+    ▼
+3  Plan        topological scene graph → tour order → per-room camera + transition
+    │
+    ▼
+4  Render      one 4-second shot per room, via the configured provider
+    │
+    ▼
+5  Assemble    conform · brand cards · labels · grade · score · sting every cut
+    │
+    ▼
+6  Inspect     spherical panorama viewer · 2D pan/zoom · verification · evaluation
 ```
 
----
+Each stage persists its output as JSON beside the media, so the pipeline is resumable and
+every later stage can be recomputed without re-running the earlier ones.
 
-## Core Technical Pipeline (Phases 1–6)
+**Ingestion** enforces a 20 MB byte limit *while streaming the upload* and a 40 MP canvas
+limit *before decoding*, de-duplicates by content hash, and detects equirectangular
+panoramas from multiple signals rather than a single aspect-ratio guess.
 
-### Phase 1: Ingestion & Image Preprocessing
-- **Validation Engine:** Enforces strict image file bounds ($\le 20\text{ MB}$, $\ge 512\times 512\text{ px}$ resolution) and format whitelisting (`JPEG`, `PNG`, `WebP`).
-- **EXIF Transposition:** Corrects sensor rotation flags automatically to prevent downstream orientation mismatch.
-- **SHA-256 Deduplication:** Prevents redundant processing by fingerprinting image byte buffers.
-- **Multi-Signal 360° Panorama Detection:** Evaluates embedded `GPano:ProjectionType` XMP metadata, strict $2:1$ aspect ratio criteria ($\text{width} \ge 1024\text{px}$), and left-right seam boundary Euclidean continuity.
+**Planning** builds a directed scene graph and orders it by architectural hierarchy
+(exterior → entrance → social → private → outdoor). It plans only the rooms you uploaded —
+it does not invent intermediate spaces to smooth the tour.
 
-### Phase 2: Multimodal Scene Understanding
-- **Vision-Language Inference:** Prompts Google Gemini 2.5 Flash with structured system instructions to extract room classifications (`exterior_front`, `entrance_foyer`, `living_room`, `kitchen`, `bedroom`, `bathroom`, `balcony_terrace`, etc.).
-- **Architectural & Environmental Analysis:** Identifies fixtures (e.g. kitchen islands, hardwood floors) and lighting conditions (`natural_daylight`, `warm_artificial`, `mixed`).
-- **Mathematical Image Quality Estimation:** Computes grayscale mean luminance (brightness), luminance standard deviation (contrast), and Laplacian/FIND_EDGES variance (sharpness).
+**Rendering** is provider-agnostic. Every engine implements one interface and receives the
+same camera instruction and grounding constraints, so the plan, prompts and assembly are
+independent of which engine produced the pixels.
 
-### Phase 3: Walkthrough Planning & Scene Graph Construction
-- **Topological Sorting:** Builds a directed adjacency graph and applies an architectural ordering heuristic from public entryways to private quarters.
-- **Conservative spatial scope:** Intermediate rooms omitted by the user are not added as separate planned scenes; transitions between available scenes use the configured transition.
-- **Conservative Camera Motion Selection:** Maps scene types to restrained camera trajectories (e.g. forward dolly for foyers, lateral pans for kitchens, subtle static drift for bathrooms) while using direct preservation and anti-distortion constraints in the Veo prompt. The current Veo 3.1 integration does not send a separate negative-prompt field.
+**Assembly** cover-crops each clip to the target frame (so no black bars ever ship), applies
+the selected grade, composits title and lower-third cards, mixes a procedurally composed
+score, and lands a synthesised sting on every cut using the assembly's own cut positions.
 
-### Phase 4: Image-to-Video Generation
-- **Pluggable Provider Architecture:** `VIDEO_PROVIDER` selects the motion engine at runtime (`auto` | `json2video` | `magic_hour` | `gemini_veo` | `kenburns`). Providers share one contract, so the pipeline is identical regardless of engine.
-- **Generative Video Synthesis (Veo):** Google Gemini Veo 3.1 synthesizes 4-second clips from single static photographs guided by the scripted motion prompts and direct preservation constraints. Safety prompt engineering uses direct preservation and anti-distortion instructions (`preserve furniture, walls, lighting, and geometry; no distortion`) to reduce structural artifacts. The current Veo 3.1 integration does not send a separate negative-prompt field.
-- **Local Cinematic Motion (Ken Burns):** Renders a genuine camera move — pan, push-in, pull-back, subtle drift — over the *real* photograph using a sub-pixel affine "virtual camera" in OpenCV and FFmpeg. Runs on CPU with no API, no quota and no cost, and is deterministic, so the property can never be hallucinated or refurnished.
-- **Cloud Render over the Real Photos (JSON2Video):** Composites the real photos with pan/zoom, easing and cross-dissolves through the JSON2Video rendering API — generous free tier (600s of rendered output) and no local GPU/CPU load. Requires `JSON2VIDEO_API_KEY` and a publicly reachable `PUBLIC_BASE_URL`, because the renderer downloads each source photo by URL.
-- **Generative Cloud Fallback (Magic Hour):** Runs a diffusion video model (Kling / LTX / Veo / Seedance / Wan) over a single still through Magic Hour's one-shot REST API, so the camera genuinely moves. Unlike JSON2Video it needs **no public URL and no tunnel** — the photo is uploaded through `/v1/files/upload-urls` and referenced by `file_path`, so it works from `localhost`. Because it is generative it can drift from the listing, which is why it is opt-in and sits behind the plate-based renderers in `auto`; the requested duration is snapped to the values the selected model actually accepts, and a plan/tier rejection is retried once without the pinned resolution so a free-tier key is never dead-ended. Because Magic Hour mirrors the input still's aspect ratio, the photo is centre-cropped to the export frame *before* upload, so the model renders the shape that actually ships instead of a clip the assembler has to crop and upscale.
-- **Graceful Degradation:** Any remote provider that is rate-limited, out of quota, content-blocked, timed out or misconfigured automatically falls back to the local renderer, so a walkthrough is always produced.
-- **Video Stream Verification:** Probes and decodes each generated clip before assembly to confirm it is readable and has expected metadata such as codec, resolution, and frame rate.
+### Render engines
 
-### Phase 5: Video Normalization & Multi-Clip Assembly
-- **Frame Conforming:** Every clip is *cover-cropped* (scaled to fill, centre-cropped) to the project's exact target frame, so no black bars ever survive into the delivered video. The target is `aspect_ratio × resolution` (for example `9:16` at `720p` → $720\times 1280$) rather than a fixed $1920\times 1080$ canvas, and the frame rate is configurable ($24/30/60$).
-- **Branded Intro & Outro Cards:** Renders opening and closing cards over a blurred, slowly drifting plate taken from the property's own photography, with gold-rule typography — rather than the flat black card this used to emit.
-- **Room Label Overlays:** Burns a fading lower-third room name onto each scene clip so viewers always know which space they are looking at.
-- **Cinematic Grade:** Applies the chosen colour treatment (warm luxury / cool modern / cinematic teal / noir) plus optional vignette and film grain in a single encode pass, so photographs read as footage.
-- **Transition Stitching:** Executes the selected transition between every pair of shots — straight cut, cross dissolve, fade-through-black, slide or wipe — at the configured duration, using multi-input FFmpeg `xfade` graphs. If the transition graph fails the render degrades to straight cuts and logs it loudly rather than silently pretending nothing happened.
-- **Royalty-Free Score:** Synthesises a background bed from sine partials with a slow amplitude swell, low-pass, echo and matched fades — nothing is downloaded and nothing is licensed. A score failure degrades to a silent cut instead of failing the render.
-- **Honest Output Metadata:** The final metadata reports the audio codec actually present in the container and the render-options fingerprint used, instead of hardcoding `audio_codec: null`.
-- **Invalidation Tracking:** Compares the plan SHA-256 hash *and* the render-options fingerprint against the assembled result, so changing the look (or the plan) flags the existing MP4 as outdated — and reverting to the settings a cut was built with makes it valid again.
-
-### Phase 6: Immersive Viewer & Technical Evaluation
-- **Dual-Mode Inspection:** Interactive HTML5 Canvas equirectangular spherical viewer for 360° panoramas and bounded high-res 2D pan/zoom for perspective photos.
-- **Automated Verification Matrix:** Non-subjective server-side checks for scene analysis completion, clip availability, video stream integrity, and plan synchronization.
-- **Standardized Human Evaluation:** 6-axis scoring rubric ($1.0$ to $5.0$) paired with scene-level defect flags (`geometry_distortion`, `flickering`, `unnatural_motion`, etc.) and exportable technical audit reports.
-
----
-
-## Cinematic Render Options
-
-One persisted, per-project configuration (`render_options.json`) controls how a walkthrough
-looks, and both Phase 4 and Phase 5 read it, so a regenerate/reassemble reproduces the same
-style without re-sending the form.
-
-| Area | Controls |
-| :--- | :--- |
-| **Output frame** | Aspect ratio (`16:9` / `9:16` / `1:1`), quality tier (`720p` / `1080p` / `1440p`), frame rate (`24` / `30` / `60`) |
-| **Pacing & motion** | Seconds per room, motion intensity (subtle / balanced / bold), per-room camera variety |
-| **Depth & realism** | 2.5D depth parallax, motion blur |
-| **Transitions** | Style (hard cut / cross dissolve / motion dissolve / blur dissolve / fade-through-black / slide / wipe) and duration |
-| **Titles & overlays** | Intro card (+ custom headline and length), outro card, burned-in room labels, room counter & tour progress, brand mark |
-| **Look** | Colour grade (warm luxury / golden hour / cool modern / cinematic teal / noir), vignette, film grain, highlight halation, cinematic bars |
-| **Score** | Enable/disable, mood (ambient / uplifting / minimal piano), level. Every cut carries a synthesised whoosh, the first shot a riser, the end card a button |
-
-Five built-in presets (`cinematic_luxury`, `modern_minimal`, `energetic_reel`,
-`documentary_tour`, `quick_draft`) apply a coherent set of values in one click; individual
-controls can then be adjusted. The studio exposes all of this in a **Cinematic Settings**
-panel in Phase 4 and Phase 5, and the API mirrors it (`GET`/`PATCH
-/api/projects/{id}/render-options`, `GET /api/projects/render-options/presets`).
-
-Changing an option that reshapes the clips (length, frame shape, fps, motion) marks the
-existing clips stale so they are regenerated on the next generate; changing a look-only
-option marks the assembled video outdated so it is reassembled. Both are reported to the UI
-rather than applied silently.
-
----
-
-## Production Value
-
-A camera move over a photograph looks like a slideshow unless the shot carries the cues a
-real camera produces. The engine builds those cues explicitly.
-
-| Feature | What it does | Why it matters |
-| :--- | :--- | :--- |
-| **2.5D depth parallax** | A monocular depth model (Depth Anything V2 Small, ONNX, run locally) estimates how far away each pixel is; the virtual camera then moves near pixels further than far ones | Without it, everything in the frame moves as one rigid sheet — which is exactly the effect users read as “a panning photo”. Measured on a real room: near-plane motion 16 px vs far-plane 3 px, against 9 px vs 6 px for the flat camera |
-| **Motion blur** | Frames are accumulated over a trailing shutter window | Real footage blurs during fast movement; it is one of the strongest “this is a camera, not a still” cues |
-| **Kinetic title cards** | The headline arrives with loose letter-spacing that tightens, the gold rule wipes outward, a soft light sweep crosses the plate, and the whole card fades up from black | A static card with text on it reads as a JPEG; this reads as a title sequence |
-| **Animated lower-thirds** | Room name slides into place, with a position counter (“03 / 08”) and a gold tour-progress line | Tells a viewer where they are in the property, which is most of what separates a listing clip from a home video |
-| **Highlight halation** | Only pixels above a measured gate feed the glow, which is a tight vertical blur smeared wide horizontally and screened back — the anamorphic bleed of a fast lens | The previous version screened a blurred copy of the *whole* frame, which left the picture ~30% softer than the source photograph and lifted the shadows into haze. Measured on a real 1080p interior: detail **19.0** without it, **17.5** with it, and **10.5** for the version it replaced; shadow floor 15 → 17, against **46** for the version it replaced |
-| **Filmic colour** | `curves` gives a per-channel tonal shape — shadows lifted off true black, mids separated, highlights rolled off below clipping — plus split-toning and `vibrance` | The old grade darkened a well-exposed interior by ~30 luma levels and crushed 2% of the frame to black. A frame that is dimmer, with black corners and black bars, is exactly what reads as *diluted* |
-| **Composed score** | A small procedural composer writes chords, a bass line, an arpeggio, soft percussion and a Schroeder reverb tail, then loudness-normalises | The score used to be a single held drone with no pulse. A bed with movement is what makes the cut feel produced |
-| **Sound design on the cuts** | A synthesised whoosh lands on every transition, a riser on the first shot, a low button on the end card — mixed from the assembly's own cut positions | Music alone does not make an edit feel produced. Measured on a finished cut: the five noisiest moments in the whole mix are exactly the five cuts, 21–30× the median spectral flatness |
-| **Continuous camera** | The ease compressed into the middle of a shot used to park the camera for the first and last tenth of every clip, so the cut read stop-start. Motion now begins almost at once and bleeds off speed, with a two-tone handheld float instead of a single periodic sway | A perfectly periodic wobble reads as machine motion; a stalled camera next to a crossfade reads as a slideshow |
-
-Everything here is generated locally and deterministically: no licensed audio, no stock
-footage and no per-render cost. The depth model is fetched once (see the install section) and
-is deliberately **not** committed, since it is ~100 MB. If it is missing, or `onnxruntime` is
-unavailable, the renderer falls back to a flat camera move instead of failing — so the
-pipeline still produces a walkthrough out of the box.
-
-**Honest limitations.** The score is procedurally composed, not a licensed recording. The
-`kenburns` and `json2video` engines move a camera over the real photograph, so there is no
-newly generated footage — motion is a cinematic camera move with real parallax, not a walk
-into the room, and there are no people; only `gemini_veo` synthesises pixels, and it can
-invent furniture. `gemini_veo` ignores frame size, frame rate and grade (the assembler
-applies those afterwards). Depth is monocular, so extreme close-ups can smear at the
-disocclusion between planes; `json2video` needs a publicly reachable `PUBLIC_BASE_URL` so its
-renderers can fetch the source photos, and its cloud canvas is clamped to Full HD.
-
----
-
-## Academic Scope & Technical Boundaries
-
-To maintain scientific integrity and realistic evaluation bounds, CinéEstate operates under explicit architectural principles:
-
-| Principle | Architectural Decision & Defense |
-| :--- | :--- |
-| **Topological Graph vs. 3D Reconstruction** | Constructs a topological scene graph rather than attempting dense Structure-from-Motion (SfM), NeRF, or 3D Gaussian Splatting (3DGS). This avoids metric reconstruction, but output quality still depends on the number, coverage, and quality of uploaded photographs. |
-| **Conservative spatial scope** | The system plans and renders uploaded scenes only. It does not generate separate clips for unphotographed intermediate rooms; provider-generated motion can still contain visual artifacts. |
-| **Generative vs. Plate-Based Motion** | Diffusion providers (`gemini_veo`) synthesize pixels and can therefore drift from the listing — invented furniture, warped geometry, changed finishes. Plate-based providers (`json2video`, `kenburns`) move a virtual camera over the real photograph, so the result is pixel-exact by construction. Accuracy and "wow factor" are a trade-off the operator selects with `VIDEO_PROVIDER`. |
-| **Aspect Ratio: Fill vs Preserve** | The *video* pipeline cover-crops to the requested frame so output never contains black bars — the right choice for a vertical reel, at the cost of cropping landscape photographs. The *viewer* (Phase 6) preserves full source geometry. Choose `16:9` to retain the whole frame; a `9:16` render from landscape photographs is a deliberate centre crop. |
-| **Equirectangular Projection Boundaries** | True 360° equirectangular panoramas are projected onto a spherical canvas; standard perspective photos remain in 2D to prevent false spherical warping. |
-
----
-
-## Evaluation Framework & Benchmark Criteria
-
-The platform integrates a standardized evaluation rubric and objective verification engine:
-
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                                 Evaluation Framework                                   │
-├──────────────────────────────────────────┬─────────────────────────────────────────────┤
-│ 1. Automated Pipeline Verification       │ 2. 6-Axis Human Evaluation Rubric (1.0-5.0) │
-│ • Scene Analysis Coverage (reported)     │ • Visual Quality & Realism (target: ≥ 4.0)  │
-│ • Elementary Clip Availability (reported)│ • Property Consistency (target: ≥ 4.0)      │
-│ • Video Stream Readability                │ • Scene Sequence & Flow (target: ≥ 4.5)     │
-│ • Plan Fingerprint Synchronization       │ • Motion Naturalness (Target: ≥ 4.0)        │
-│                                          │ • Temporal Stability (Target: ≥ 3.5)        │
-│                                          │ • Walkthrough Usefulness (Target: ≥ 4.0)    │
-└──────────────────────────────────────────┴─────────────────────────────────────────────┘
-```
-
----
-
-## Security & Operational Guards
-
-The API is designed to be exposed (a tunnelled localhost, or a Vercel deployment) without
-becoming a free proxy for other people's provider quota:
-
-| Guard | Behaviour |
-| :--- | :--- |
-| Shared access key | When `API_ACCESS_KEY` is set, every `/api` route requires it as `X-API-Key` (or `?key=`). Comparison uses `hmac.compare_digest`. |
-| Media exemption | `/file`, `/download`, `/thumbnail` and `/analysis-file` stay open because `<img>`/`<video>`/`<a download>` cannot send headers, and they are addressed by unguessable server-generated ids. Matched on the final path segment against an explicit allow-list. |
-| CORS | No wildcard fallback; the configured origins are explicit, and `allow_credentials=True` would break a wildcard anyway. |
-| Upload limits | 20 MB per image enforced **while streaming the read** (a client cannot send a 2 GB body and be told so only afterwards), plus a 40 MP canvas cap checked before decode, so a decompression bomb cannot allocate `width × height × 4` bytes. |
-| Safe writes | Every JSON artifact is written to a temp file and `os.replace`d into place, so a crash mid-write cannot corrupt a project. |
-| Fail-closed staleness | If the plan fingerprint cannot be read, the existing video is reported *outdated* rather than silently trusted. |
-| Startup resilience | One unreadable legacy project record is logged and skipped instead of preventing the process from ever starting. |
-
-`/api/health` is the single unauthenticated endpoint and is deliberately self-describing:
-it reports which environment files were loaded, whether a key is required, and which video
-provider the current configuration resolves to — as booleans and names, never values. That
-is what lets `scripts/check_config.py` and the studio banner diagnose a misconfiguration
-without exposing a secret.
-
----
-
-## Repository Structure
-
-```
-.
-├── frontend/                          # Next.js 16 / React 19 Frontend Client
-│   ├── app/                           # App router (/studio, landing page, layout)
-│   ├── components/                    # Modular studio components
-│   │   ├── PropertyForm.tsx / Dropzone.tsx # Image upload and project setup
-│   │   ├── SceneResultsView.tsx       # AI scene classification & quality audit
-│   │   ├── WalkthroughPlanView.tsx    # Interactive plan & camera planner
-│   │   ├── GenerationView.tsx         # Queued video generation and fallback controls
-│   │   ├── FinalWalkthroughView.tsx   # Video player & FFmpeg assembly controls
-│   │   └── ImmersiveSceneViewer.tsx   # 360° Spherical & 2D Pan/Zoom Inspector
-│   ├── lib/api.ts                     # Full-featured typed REST API client
-│   └── types/                         # TypeScript interfaces mirroring Pydantic models
-│
-├── backend/                           # Python FastAPI Backend Server
-│   ├── app/
-│   │   ├── api/v1/projects.py         # Consolidated REST routes across all 6 phases
-│   │   ├── core/                      # Configuration, error types, logging
-│   │   ├── schemas/                   # Pydantic validation schemas
-│   │   │   ├── project.py             # Project & image metadata schemas
-│   │   │   ├── scene.py               # VLM scene understanding schemas
-│   │   │   ├── plan.py                # Walkthrough plan & camera schemas
-│   │   │   ├── generation.py          # Video generation jobs and status schemas
-│   │   │   └── evaluation.py          # Verification & review schemas
-│   │   └── services/                  # Business logic services
-│   │       ├── image_preprocessor.py  # Validation, EXIF & multi-signal pano detection
-│   │       ├── scene_analyzer/        # Gemini 2.5 Flash VLM inference
-│   │       ├── walkthrough_planner/   # Graph ordering, camera & transition planning
-│   │       ├── video_generation/      # Gemini Veo provider, pacing and recovery
-│   │       ├── local_slideshow_service.py # No-API image slideshow fallback
-│   │       ├── video_assembler/       # FFmpeg probe, normalize, title, concat
-│   │       └── evaluation_service.py  # Verification checks & audit report generation
-│   ├── storage/projects/              # Isolated local project filesystem storage
-│   └── tests/                         # Unit and integration tests across all phases
-│
-├── docs/                              # Comprehensive Technical Documentation
-│   ├── architecture.md                # In-depth subsystem architecture & data flows
-│   ├── api.md                         # Complete REST API endpoint reference
-│   ├── viva.md                        # Viva questions & technical answers
-│   ├── future-upgrades.md             # Future upgrades and academic scope boundaries
-│   ├── final-demo.md                  # End-to-end live demonstration guide
-│   ├── evaluation.md                  # Metric definitions & evaluation guidelines
-│   ├── results.md                     # Experimental benchmarks & evaluation template
-│   ├── screenshots.md                 # 13 ordered UI capture checklist
-│   └── presentation-outline.md        # 18-slide academic presentation structure
-│
-├── .env.example                       # Root environment variables template
-└── README.md                          # Project documentation and quickstart
-```
-
----
-
-## Quick Start & Local Setup
-
-### System Prerequisites
-- **Python:** `>= 3.10` (Tested on Python 3.11, 3.12, 3.14)
-- **Node.js:** `>= 18.0` (Tested on Node v20 LTS, v24)
-- **FFmpeg:** Bundled automatically via `imageio-ffmpeg` or local system binary
-- **API keys:** see the provider table below — at minimum `GEMINI_API_KEY`
-
-### One-command configuration
-
-```bash
-python scripts/setup_env.py
-```
-
-Run this on **every** machine that gets a fresh clone. Real keys live in
-`backend/.env` and `frontend/.env.local`, both of which are git-ignored, so a clone
-starts with *no* configuration at all and the failure is easy to misread: the UI
-loads, then every action fails, and it looks like the server is broken.
-
-The script is idempotent and safe to re-run. It:
-
-1. creates `backend/.env` and `frontend/.env.local` from their `.env.example` templates,
-2. writes the **same** generated `API_ACCESS_KEY` into `backend/.env` and
-   `NEXT_PUBLIC_API_KEY` into `frontend/.env.local`, so the two sides can never drift apart,
-3. reports which provider keys still need filling in.
-
-Then edit `backend/.env` and add your keys. Verify at any time with:
-
-```bash
-python scripts/check_config.py            # local files + what the backend actually loaded
-python scripts/check_config.py --url https://your-backend.vercel.app   # also probe a deployment
-```
-
-The checker prints key *fingerprints* (8 hex chars of SHA-256), never values, so its
-output is safe to paste into a bug report.
-
-### If the API keys "work on my machine but not on another"
-
-`scripts/check_config.py` identifies which of these it is:
-
-| Symptom | Cause | Fix |
-| :--- | :--- | :--- |
-| Every request returns 401 | `API_ACCESS_KEY` (backend) and `NEXT_PUBLIC_API_KEY` (frontend) differ, or one is unset | Re-run `python scripts/setup_env.py`, then restart `next dev` |
-| Backend has no keys at all | `backend/.env` was never created (it is git-ignored) | `python scripts/setup_env.py` |
-| Key present but ignored | The backend was started from a directory where it could not find `.env` | Fixed: `.env` is now resolved relative to the `backend/` package, so any working directory works |
-| Phase 2 fails, everything else works | `GEMINI_API_KEY` missing or still the `your_gemini_api_key_here` placeholder | Add the key and restart |
-| Clips all come from the local renderer | No video provider key, or credits exhausted | Expected degradation — add `MAGIC_HOUR_API_KEY` for generative motion |
-
-`NEXT_PUBLIC_*` variables are inlined at **build** time. Changing them requires
-restarting `next dev`, or a new Vercel deployment — restarting uvicorn is not enough.
-
-### Free-tier operation
-
-The application is designed to remain usable when Gemini/Veo free-tier capacity is limited:
-
-- Veo requests run one at a time by default.
-- Submissions are paced and transient rate limits use exponential backoff.
-- Quota failures pause the affected job instead of retrying indefinitely.
-- Users can select only the scenes they need to generate.
-- A local image-slideshow fallback can create a valid walkthrough without a video API call.
-
-**Choosing a provider.** The free-tier wall is a *provider* problem, not a pipeline
-problem, so Phase 4 is swappable:
-
-| `VIDEO_PROVIDER` | Motion source | Cost / limits | Property accuracy |
+| `VIDEO_PROVIDER` | Motion source | Cost | Property accuracy |
 | :--- | :--- | :--- | :--- |
-| `json2video` | Cloud render of the real photos (pan/zoom + transitions) | Free tier ≈ 600s of render; needs `PUBLIC_BASE_URL` | Exact — pixels are the actual listing |
-| `magic_hour` | Generative diffusion over one still (Kling / LTX / Veo) | Credit-based per second of output; no public URL needed | Diffusion can invent furniture, geometry and finishes |
-| `gemini_veo` | Generative diffusion (Veo) | Hardest free tier; 1 request at a time | Diffusion can invent furniture, geometry and finishes |
-| `kenburns` | Local render of the real photos (OpenCV + FFmpeg) | Free, unlimited, offline | Exact — pixels are the actual listing |
-| `auto` (default) | Best configured remote, local fallback | — | Degrades rather than failing |
+| `kenburns` | Local camera move over the real photo (OpenCV + FFmpeg) | Free, offline, no quota | Exact — pixels are the listing |
+| `json2video` | Cloud render of the real photos (pan/zoom + transitions) | Free tier ≈ 600 s of render; needs a public URL | Exact — pixels are the listing |
+| `magic_hour` | Generative diffusion over one still (Kling / LTX / Veo / Seedance) | Credits per second of output; no public URL needed | Can invent furniture and geometry |
+| `gemini_veo` | Generative diffusion (Veo) | Hardest free tier | Can invent furniture and geometry |
+| `auto` *(default)* | Best configured remote, local fallback | — | Degrades instead of failing |
 
-Run `VIDEO_PROVIDER=kenburns` for a fully offline walkthrough with zero API calls, set
-`JSON2VIDEO_API_KEY` + `PUBLIC_BASE_URL` to offload rendering to the cloud, or set
-`MAGIC_HOUR_API_KEY` for generative motion with no tunnel required. In `auto` mode a
-quota, rate-limit, content-block or misconfiguration error degrades the affected clip
-to the local renderer instead of failing the job.
-
-Free-tier quotas are provider-controlled and cannot guarantee unlimited or immediate video generation. See [`docs/future-upgrades.md`](docs/future-upgrades.md) before onboarding multiple users.
+In `auto`, a rate limit, exhausted quota, content block or misconfiguration degrades the
+affected clip to the local renderer rather than failing the walkthrough — so a tour is
+always produced. Set `VIDEO_PROVIDER=kenburns` for a fully offline run with zero API calls.
 
 ---
 
-### 1. Backend Installation & Execution
+## Quick start
+
+**Prerequisites:** Python ≥ 3.10, Node.js ≥ 18. FFmpeg ships inside the `imageio-ffmpeg`
+wheel, so nothing needs installing system-wide.
+
+### 1. Configure
 
 ```bash
-# Navigate to backend directory
-cd backend
-
-# Fetch the local depth model used for 2.5D parallax (~100MB, not committed)
-mkdir -p models
-curl -L -o models/depth_anything_v2_small.onnx \
-  https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model.onnx
-
-# Create and activate Python virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment variables (see "One-command configuration" above)
-cd ..
 python scripts/setup_env.py
-cd backend
-# then edit backend/.env and add your provider keys
+```
 
-# Launch FastAPI development server
+Run this once per clone. Real keys live in `backend/.env` and `frontend/.env.local`, both
+git-ignored, so a fresh checkout starts with no configuration at all. This script creates
+both files and writes **one shared key** into `API_ACCESS_KEY` and `NEXT_PUBLIC_API_KEY`,
+so the two halves can never disagree. Then edit `backend/.env` and add your provider keys.
+
+### 2. Backend
+
+```bash
+cd backend
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-The depth model is optional: without it the local renderer falls back to a flat
-affine camera move instead of 2.5D parallax, and nothing else changes.
+* API base `http://localhost:8000` · interactive docs `/docs` · health `/api/health`
 
-The backend resolves `.env` relative to the `backend/` package, so it loads the same
-keys whether uvicorn is launched from the repository root, from `backend/`, or from
-an IDE run configuration.
-
-- **Backend API Base:** `http://localhost:8000`
-- **Interactive Swagger Docs:** `http://localhost:8000/docs`
-- **Health Check Endpoint:** `http://localhost:8000/api/health`
-
----
-
-### 2. Frontend Installation & Execution
+### 3. Frontend
 
 ```bash
-# In a separate terminal
-python scripts/setup_env.py     # creates frontend/.env.local and syncs the API key
-
 cd frontend
 npm install
 npm run dev
 ```
 
-If `frontend/.env.local` did not exist when `next dev` started, restart it —
-`NEXT_PUBLIC_*` values are read at build time, not per request.
+* Studio `http://localhost:3000/studio` · landing page `http://localhost:3000`
 
-The studio banner warns about configuration problems it can detect (missing or
-mismatched API key, no Gemini key, no provider key) before the first upload fails.
+Optional: `backend/models/depth_anything_v2_small.onnx` (~100 MB, not committed) adds 2.5D
+depth parallax to the local renderer. Without it the renderer falls back to a flat camera
+move — nothing else changes.
 
-- **Studio Interface:** `http://localhost:3000/studio`
-- **Landing Page:** `http://localhost:3000`
+### Verify your configuration
+
+```bash
+python scripts/check_config.py                                     # local files
+python scripts/check_config.py --url https://your-backend.example  # probe a deployment
+```
+
+Both print key *fingerprints* (8 hex characters of a SHA-256), never values, so the output
+is safe to paste into a bug report.
+
+### If keys work on one machine but not another
+
+| Symptom | Cause | Fix |
+| :--- | :--- | :--- |
+| Every request returns 401 | `API_ACCESS_KEY` and `NEXT_PUBLIC_API_KEY` differ, or one is unset | `python scripts/setup_env.py`, then restart `next dev` |
+| Backend has no keys | `backend/.env` was never created (it is git-ignored) | `python scripts/setup_env.py` |
+| Phase 2 fails, the rest works | `GEMINI_API_KEY` missing or still a placeholder | Add the key and restart |
+| Clips come from the local renderer | No video provider key, or credits exhausted | Expected degradation |
+| A new `NEXT_PUBLIC_*` value has no effect | It is inlined at **build** time | Restart `next dev`; on Vercel, redeploy |
+
+The backend resolves `.env` relative to its own package, so it loads the same keys whatever
+directory it is started from.
 
 ---
 
-## Automated Test Suite
-
-The project includes an automated test suite covering all 6 phases:
+## Testing
 
 ```bash
-cd backend
-./venv/bin/pytest tests/ -v
+cd backend && ./venv/bin/pytest -q        # 230+ tests
+cd frontend && npx tsc --noEmit && npm run build
 ```
 
-The exact test count and timing depend on the current checkout. The command above is the source of truth.
+The suite covers all six phases plus the provider integrations, the API-key guard, upload
+limits and configuration resolution. `API_ACCESS_KEY` is neutralised by default so a local
+key cannot turn every API test into a 401; the guard has its own opt-in tests.
 
-Note: `API_ACCESS_KEY` is a *deployment* guard read from `backend/.env`. The test suite
-neutralises it by default so a developer's local key does not turn every API test into a
-401; `tests/test_api_access_key.py` opts back in explicitly to cover the guard itself.
+---
 
-To run the frontend production build verification:
-```bash
-cd frontend
-npm run build
-```
+## Configuration
+
+Everything is environment-driven; the templates are the reference:
+[`backend/.env.example`](backend/.env.example) and
+[`frontend/.env.example`](frontend/.env.example). The settings that matter most:
+
+| Variable | Purpose |
+| :--- | :--- |
+| `GEMINI_API_KEY` | Required. Vision model for scene understanding. |
+| `VIDEO_PROVIDER` | `auto` \| `json2video` \| `magic_hour` \| `gemini_veo` \| `kenburns` |
+| `MAGIC_HOUR_API_KEY` | Generative motion with no public URL required. |
+| `JSON2VIDEO_API_KEY` + `PUBLIC_BASE_URL` | Cloud render over the real photos. |
+| `API_ACCESS_KEY` | Shared secret guarding `/api`; must equal `NEXT_PUBLIC_API_KEY`. |
+| `MAX_IMAGE_SIZE_BYTES` / `MAX_IMAGE_PIXELS` | Upload byte cap and decompression-bomb cap. |
+| `CORS_ORIGINS` / `CORS_ORIGIN_REGEX` | Allowed browser origins; the regex covers preview URLs that change per deployment. |
+
+A per-project `render_options.json` controls the look — frame shape and quality, pacing,
+camera variety, transitions, titles, colour grade, and score — with five presets
+(`cinematic_luxury`, `modern_minimal`, `energetic_reel`, `documentary_tour`, `quick_draft`).
+Both the render and assembly stages read it, so a regenerate reproduces the same style.
+Changing a look-only option flags the assembled video as outdated rather than silently
+leaving a stale file in place.
+
+---
 
 ## Deployment
 
-### Recommended: backend on Render, frontend on Vercel
-
-This backend does not belong on a serverless platform. It renders video with FFmpeg
-for minutes at a time, keeps a project tree on disk and scans it at startup, and holds
-in-process `asyncio` generation jobs. A long-lived web service does all three normally;
-a serverless function formally cannot, because its filesystem is ephemeral, its
-execution window is bounded, and its instances share no state.
-
-1. **Backend → Render.** New → Blueprint → pick this repository.
-   [`render.yaml`](render.yaml) defines the service; Render prompts for the secrets
-   marked `sync: false`. Copy the resulting `https://<name>.onrender.com` URL.
-2. **Frontend → Vercel.** Set `NEXT_PUBLIC_API_URL` to that URL and
-   `NEXT_PUBLIC_API_KEY` to the same value as the backend's `API_ACCESS_KEY`, then
-   redeploy — `NEXT_PUBLIC_*` is inlined at build time.
-3. **Set `PUBLIC_BASE_URL`** on the Render service to its own URL. This is what lets
-   the JSON2Video renderer download source photos — impossible from localhost.
-
-CORS needs no manual work here: the blueprint sets `CORS_ORIGIN_REGEX` to admit every
-`*.vercel.app` origin, which is required because **Vercel assigns a new hostname to
-every preview deployment** and a static allow-list would break on each branch build.
-
-Full walkthrough, free-tier limits and troubleshooting:
-[`docs/deployment-render.md`](docs/deployment-render.md).
-
-> Render's **free** instances cannot attach a persistent disk and sleep after ~15 idle
-> minutes, so projects do not survive a restart. That is fine for evaluating the
-> pipeline in one sitting. Attaching a disk (paid instance) and setting
-> `STORAGE_DIR=/var/data/storage` makes the project store durable.
-
-### Alternative: everything on Vercel
+**Recommended: backend on Render, frontend on Vercel.**
 
 ```bash
-vercel login          # once; the CLI stores credentials outside the repository
-bash scripts/deploy_vercel.sh
+# Backend → Render:  New → Blueprint → pick this repository
+#                    (render.yaml defines the service; Render prompts for secrets)
 ```
 
-One command deploys both apps and wires them together: backend first, configuration
-pushed from `backend/.env` without printing values, `PUBLIC_BASE_URL` set to the
-backend's own URL, the frontend built against it with a matching `NEXT_PUBLIC_API_KEY`,
-then `CORS_ORIGINS` widened and the backend redeployed, and finally `/api/health`
-probed. Project names, scope and the CLI binary are overridable — see the variables at
-the top of [`scripts/deploy_vercel.sh`](scripts/deploy_vercel.sh), and
-[`docs/deployment-vercel.md`](docs/deployment-vercel.md) for the manual steps.
+Then set `NEXT_PUBLIC_API_URL` (the Render URL) and `NEXT_PUBLIC_API_KEY` (the same value
+as `API_ACCESS_KEY`) on the Vercel frontend project and redeploy. Finally set
+`PUBLIC_BASE_URL` on the Render service to its own URL — that is what lets the JSON2Video
+renderer download source photos, which localhost never could.
 
-**What works:** the whole studio workflow — project creation, image upload, AI scene
-analysis, planning, clip generation via Magic Hour, inspection and evaluation. Storage
-is redirected to `/tmp` automatically, and `/api/health` reports
-`"is_serverless": true` so you can tell which environment you are talking to.
+This split is deliberate. The backend renders video with FFmpeg for minutes at a time,
+keeps a project tree on disk and scans it at startup, and holds in-process generation jobs.
+A long-lived web service does all three; a serverless function formally cannot.
 
-**What does not:** durable media. Vercel functions get an ephemeral filesystem and a
-bounded execution window, so a project that exists in one request may not exist in the
-next, and a long FFmpeg assembly can exceed the function timeout.
+* Walkthrough: [`docs/deployment-render.md`](docs/deployment-render.md)
+* Alternative, both apps on Vercel: [`docs/deployment-vercel.md`](docs/deployment-vercel.md)
 
 ---
 
-## Technical Documentation Index
+## Repository layout
 
-For exhaustive technical reference and evaluation preparation, consult the `/docs` directory:
+```
+├── backend/
+│   ├── app/
+│   │   ├── api/v1/          # all REST routes (health + projects)
+│   │   ├── core/            # settings, error types, logging
+│   │   ├── schemas/         # Pydantic models for every phase
+│   │   └── services/
+│   │       ├── image_preprocessor.py      # validation, EXIF, panorama detection
+│   │       ├── scene_analyzer/            # Gemini vision provider
+│   │       ├── walkthrough_planner/       # scene graph, camera + transition planning
+│   │       ├── video_generation/          # provider interface + 4 engines
+│   │       └── video_assembler/           # FFmpeg engine, grade, cards, score
+│   ├── api/index.py         # serverless entrypoint (optional topology)
+│   └── tests/               # pytest suite
+├── frontend/
+│   ├── app/                 # landing page + /studio
+│   ├── components/          # studio UI per phase
+│   ├── lib/api.ts           # typed API client
+│   └── types/               # interfaces mirroring the Pydantic schemas
+├── docs/                    # technical reference and evaluation material
+├── scripts/                 # setup, diagnostics, deployment
+└── render.yaml              # Render blueprint
+```
 
-| Document | Description |
+---
+
+## Documentation
+
+| Document | Contents |
 | :--- | :--- |
-| [`docs/architecture.md`](docs/architecture.md) | Deep architectural specifications, module responsibilities, and data models. |
-| [`docs/api.md`](docs/api.md) | Complete REST API endpoint reference with request/response payloads. |
-| [`docs/deployment-render.md`](docs/deployment-render.md) | **Recommended** topology: backend on Render, frontend on Vercel — setup, persistent storage, and troubleshooting. |
-| [`docs/deployment-vercel.md`](docs/deployment-vercel.md) | Alternative: both apps on Vercel, with the serverless constraints stated up front. |
-| [`docs/viva.md`](docs/viva.md) | Viva and technical-defense questions with implementation-grounded answers. |
-| [`docs/future-upgrades.md`](docs/future-upgrades.md) | Future upgrades, academic boundaries, scope constraints, and explicit non-goals. |
-| [`docs/final-demo.md`](docs/final-demo.md) | End-to-end live demonstration and evaluation script. |
-| [`docs/evaluation.md`](docs/evaluation.md) | Evaluation metric formulas, automated verification rules, and rubric scoring. |
-| [`docs/results.md`](docs/results.md) | Reproducible test commands, result-recording template, and evaluation guidance. |
-| [`docs/screenshots.md`](docs/screenshots.md) | 13 ordered screenshot captures for documentation and report inclusion. |
-| [`docs/presentation-outline.md`](docs/presentation-outline.md) | 18-slide academic presentation structure with talking points. |
+| [architecture.md](docs/architecture.md) | Module responsibilities, data flow, storage layout, configuration resolution |
+| [api.md](docs/api.md) | Every REST endpoint, payloads, and the authentication contract |
+| [deployment-render.md](docs/deployment-render.md) | Recommended deployment, persistent storage, troubleshooting |
+| [deployment-vercel.md](docs/deployment-vercel.md) | All-Vercel alternative and its serverless constraints |
+| [evaluation.md](docs/evaluation.md) | Metric formulas, verification rules, rubric scoring |
+| [results.md](docs/results.md) | Reproducible test commands and result-recording template |
+| [viva.md](docs/viva.md) | Technical defence questions with grounded answers |
+| [final-demo.md](docs/final-demo.md) | End-to-end demonstration script |
+| [presentation-outline.md](docs/presentation-outline.md) | Slide structure with talking points |
+| [screenshots.md](docs/screenshots.md) | Screenshot capture checklist |
+| [future-upgrades.md](docs/future-upgrades.md) | Boundaries, explicit non-goals, and planned work |
+
+---
+
+## Scope and limitations
+
+The system is honest about what it is and is not:
+
+- **Not 3D reconstruction.** It builds a topological scene graph, not dense SfM, NeRF or
+  Gaussian splatting. There is no metric geometry, and output quality depends on how many
+  photographs you supply and how well they cover the property.
+- **No invented rooms.** Only uploaded scenes are planned and rendered; the pipeline does
+  not fabricate clips for spaces nobody photographed.
+- **Generative providers drift.** `magic_hour` and `gemini_veo` synthesise pixels and can
+  invent furniture, warp geometry or change finishes. The plate-based engines (`kenburns`,
+  `json2video`) move a camera over the real photograph and are pixel-exact by construction.
+  Accuracy versus spectacle is a trade-off the operator selects, not one the system hides.
+- **Cover-crop, not letterbox.** The video pipeline fills the requested frame so no black
+  bars ever ship, which centre-crops landscape photos into a `9:16` reel. The viewer keeps
+  full source geometry.
+- **Procedural score.** The soundtrack is composed locally from oscillators and filters —
+  no licensed recording, no downloaded assets.
 
 ---
 
 ## License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).

@@ -1,20 +1,15 @@
 from datetime import datetime, timezone
-import uuid
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional
 from app.core.errors import AppException, ProjectNotFoundError
 from app.core.logging import logger
 from app.schemas.image import ImageMetadata
 from app.schemas.plan import (
-    CameraInstruction,
-    CameraMotionType,
     GenerationPlan,
     PlannedScene,
     PlanSource,
     PlanUpdateRequest,
-    SceneGraph,
     SceneNode,
     TransitionInstruction,
-    TransitionType,
 )
 from app.schemas.project import ProjectStatus
 from app.services.storage_service import storage_service

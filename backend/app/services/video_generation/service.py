@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional
 import uuid
 
 from app.core.config import settings
@@ -13,7 +13,6 @@ from app.schemas.generation import (
     GenerationJobStatus,
     ProjectGenerationOverview,
     ProjectGenerationStatus,
-    QualityAssessment,
     RegenerateSceneRequest,
     SceneGenerationStatus,
     SceneGenerationSummary,
@@ -21,7 +20,6 @@ from app.schemas.generation import (
 )
 from app.schemas.plan import CameraMotionType, GenerationPlan, PlannedScene
 from app.schemas.project import ProjectStatus
-from app.schemas.render_options import RenderOptions
 from app.services.render_options_service import render_options_service
 from app.services.storage_service import storage_service
 from app.services.video_generation.base import ImageToVideoProvider

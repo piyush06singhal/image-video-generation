@@ -19,7 +19,7 @@ cheap enough to run inline during assembly.
 from dataclasses import dataclass
 from enum import Enum
 import wave
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Sequence, Tuple
 
 import numpy as np
 

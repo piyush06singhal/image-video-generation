@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import List
 from uuid import uuid4
 
 from app.core.errors import ProjectNotFoundError

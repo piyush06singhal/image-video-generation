@@ -1,0 +1,30 @@
+Remove dead code and tighten the README
+
+Full-project sweep: an AST pass over every backend module for unused imports,
+unreachable packages and dead assets, then verify by reference.
+
+Removed, each confirmed unreferenced before deletion:
+- frontend/components/AlertBanner.tsx and ImageGrid.tsx, plus the five default
+  Next.js SVGs in frontend/public (no imports, no references anywhere)
+- backend/app/models/, an empty package nothing imports
+- backend/tests/_render_e2e.py and _render_showcase.py, both self-described
+  throwaway harnesses, and verify_e2e.py, an undocumented duplicate of the
+  documented _e2e_local_check.py (which is kept)
+- backend/tests/fixtures/real_images/, four JPEGs no test reads; tests synthesise
+  their own images through helpers.create_test_image_bytes
+- the root .env.example, a partial duplicate of backend/.env.example and
+  frontend/.env.example that had already drifted from both
+
+Also removes 31 unused imports across 16 modules, found by AST analysis and
+checked against re-exports before removal.
+
+README rewritten from 543 to 286 lines: the oversized ASCII architecture
+diagram, the duplicated evaluation box and the long measurement tables are gone,
+replaced by a compact pipeline diagram, a providers table, the cross-machine key
+troubleshooting table, and honest scope limits. No technical claim was dropped
+without moving it to the document that owns it.
+
+Verified: 238 tests pass, tsc clean, next build clean.
+
+🤖 Generated with Codebuff
+Co-Authored-By: Codebuff <noreply@codebuff.com>

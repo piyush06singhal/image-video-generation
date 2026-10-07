@@ -3,7 +3,6 @@ import os
 import re
 import secrets
 from datetime import datetime, timezone
-from pathlib import Path
 
 
 def sanitize_filename(filename: str) -> str:

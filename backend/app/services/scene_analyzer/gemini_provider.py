@@ -1,6 +1,5 @@
 import json
 import os
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -21,7 +20,6 @@ from app.services.scene_analyzer.base import BaseSceneAnalyzer
 try:
     from google import genai
     from google.genai import types
-    from google.genai.errors import APIError
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False

@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional
 from app.schemas.plan import CameraInstruction, CameraMotionType, SceneNode
-from app.schemas.scene import CameraView, LightingType, SceneType, ViewType
+from app.schemas.scene import SceneType
 
 # Deterministic baseline motion type mapping per room type and view scale
 DEFAULT_ROOM_MOTIONS: Dict[SceneType, CameraMotionType] = {

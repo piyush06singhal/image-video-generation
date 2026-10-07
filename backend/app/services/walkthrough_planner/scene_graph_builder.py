@@ -1,4 +1,3 @@
-import re
 from typing import Dict, List, Optional, Set, Tuple
 from app.schemas.image import ImageMetadata
 from app.schemas.plan import ConnectionEvidence, SceneGraph, SceneNode
