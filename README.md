@@ -19,7 +19,7 @@ Traditional real estate listings rely on disconnected photo galleries that requi
 1. **Automated Structural & Semantic Ingestion:** Ingests unordered photographs within configurable project limits, performs byte-level integrity checks, SHA-256 deduplication, and panorama detection signals.
 2. **Multimodal Scene Understanding (VLM):** Uses Google Gemini 2.5 Flash to classify architectural room types, evaluate lighting, detect door connections, and quantify image quality.
 3. **Topological Scene Graph Planning:** Constructs a directed graph and applies deterministic ordering heuristics to suggest a natural walkthrough flow (`Exterior` → `Foyer` → `Living` → `Kitchen` → `Private Quarters` → `Outdoor`). The planner does not create source images for missing rooms.
-4. **Diffusion-Based Motion Synthesis:** Translates planned camera trajectories (e.g. slow forward dollies, kitchen pans) into photorealistic 4-second video clips via Gemini Veo with direct preservation and anti-distortion constraints. The current Veo 3.1 integration does not send a separate negative-prompt field.
+4. **Motion Synthesis via a Pluggable Provider Layer:** Translates planned camera trajectories (slow forward dollies, kitchen pans) into 4-second video clips through one of four interchangeable backends — a cloud renderer that pans over the real photos (JSON2Video), generative diffusion over one still (Magic Hour: Kling / LTX / Veo / Seedance), Gemini Veo directly, or a fully local OpenCV Ken Burns renderer. Every provider implements one abstract interface and receives the same grounding constraints ("do not add, remove or move any object"), so the plan, prompts and assembly are independent of which engine renders the pixels.
 5. **Deterministic Video Normalization & Assembly:** Standardizes video streams with FFmpeg using proportional letterbox padding and configurable cuts or short crossfades.
 6. **Dual-Inspection & Quantitative Evaluation:** Delivers an interactive 360° equirectangular canvas / 2D pan-zoom inspector, an automated 4-point verification engine, and a 6-axis human evaluation audit system.
 
@@ -218,6 +218,29 @@ The platform integrates a standardized evaluation rubric and objective verificat
 
 ---
 
+## Security & Operational Guards
+
+The API is designed to be exposed (a tunnelled localhost, or a Vercel deployment) without
+becoming a free proxy for other people's provider quota:
+
+| Guard | Behaviour |
+| :--- | :--- |
+| Shared access key | When `API_ACCESS_KEY` is set, every `/api` route requires it as `X-API-Key` (or `?key=`). Comparison uses `hmac.compare_digest`. |
+| Media exemption | `/file`, `/download`, `/thumbnail` and `/analysis-file` stay open because `<img>`/`<video>`/`<a download>` cannot send headers, and they are addressed by unguessable server-generated ids. Matched on the final path segment against an explicit allow-list. |
+| CORS | No wildcard fallback; the configured origins are explicit, and `allow_credentials=True` would break a wildcard anyway. |
+| Upload limits | 20 MB per image enforced **while streaming the read** (a client cannot send a 2 GB body and be told so only afterwards), plus a 40 MP canvas cap checked before decode, so a decompression bomb cannot allocate `width × height × 4` bytes. |
+| Safe writes | Every JSON artifact is written to a temp file and `os.replace`d into place, so a crash mid-write cannot corrupt a project. |
+| Fail-closed staleness | If the plan fingerprint cannot be read, the existing video is reported *outdated* rather than silently trusted. |
+| Startup resilience | One unreadable legacy project record is logged and skipped instead of preventing the process from ever starting. |
+
+`/api/health` is the single unauthenticated endpoint and is deliberately self-describing:
+it reports which environment files were loaded, whether a key is required, and which video
+provider the current configuration resolves to — as booleans and names, never values. That
+is what lets `scripts/check_config.py` and the studio banner diagnose a misconfiguration
+without exposing a secret.
+
+---
+
 ## Repository Structure
 
 ```
@@ -278,7 +301,50 @@ The platform integrates a standardized evaluation rubric and objective verificat
 - **Python:** `>= 3.10` (Tested on Python 3.11, 3.12, 3.14)
 - **Node.js:** `>= 18.0` (Tested on Node v20 LTS, v24)
 - **FFmpeg:** Bundled automatically via `imageio-ffmpeg` or local system binary
-- **Gemini API Key:** Active key from Google AI Studio (`GEMINI_API_KEY`)
+- **API keys:** see the provider table below — at minimum `GEMINI_API_KEY`
+
+### One-command configuration
+
+```bash
+python scripts/setup_env.py
+```
+
+Run this on **every** machine that gets a fresh clone. Real keys live in
+`backend/.env` and `frontend/.env.local`, both of which are git-ignored, so a clone
+starts with *no* configuration at all and the failure is easy to misread: the UI
+loads, then every action fails, and it looks like the server is broken.
+
+The script is idempotent and safe to re-run. It:
+
+1. creates `backend/.env` and `frontend/.env.local` from their `.env.example` templates,
+2. writes the **same** generated `API_ACCESS_KEY` into `backend/.env` and
+   `NEXT_PUBLIC_API_KEY` into `frontend/.env.local`, so the two sides can never drift apart,
+3. reports which provider keys still need filling in.
+
+Then edit `backend/.env` and add your keys. Verify at any time with:
+
+```bash
+python scripts/check_config.py            # local files + what the backend actually loaded
+python scripts/check_config.py --url https://your-backend.vercel.app   # also probe a deployment
+```
+
+The checker prints key *fingerprints* (8 hex chars of SHA-256), never values, so its
+output is safe to paste into a bug report.
+
+### If the API keys "work on my machine but not on another"
+
+`scripts/check_config.py` identifies which of these it is:
+
+| Symptom | Cause | Fix |
+| :--- | :--- | :--- |
+| Every request returns 401 | `API_ACCESS_KEY` (backend) and `NEXT_PUBLIC_API_KEY` (frontend) differ, or one is unset | Re-run `python scripts/setup_env.py`, then restart `next dev` |
+| Backend has no keys at all | `backend/.env` was never created (it is git-ignored) | `python scripts/setup_env.py` |
+| Key present but ignored | The backend was started from a directory where it could not find `.env` | Fixed: `.env` is now resolved relative to the `backend/` package, so any working directory works |
+| Phase 2 fails, everything else works | `GEMINI_API_KEY` missing or still the `your_gemini_api_key_here` placeholder | Add the key and restart |
+| Clips all come from the local renderer | No video provider key, or credits exhausted | Expected degradation — add `MAGIC_HOUR_API_KEY` for generative motion |
+
+`NEXT_PUBLIC_*` variables are inlined at **build** time. Changing them requires
+restarting `next dev`, or a new Vercel deployment — restarting uvicorn is not enough.
 
 ### Free-tier operation
 
@@ -329,13 +395,22 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Configure environment variables
-cp .env.example .env
-# Edit .env and set your GEMINI_API_KEY=your_key_here
+# Configure environment variables (see "One-command configuration" above)
+cd ..
+python scripts/setup_env.py
+cd backend
+# then edit backend/.env and add your provider keys
 
 # Launch FastAPI development server
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+The depth model is optional: without it the local renderer falls back to a flat
+affine camera move instead of 2.5D parallax, and nothing else changes.
+
+The backend resolves `.env` relative to the `backend/` package, so it loads the same
+keys whether uvicorn is launched from the repository root, from `backend/`, or from
+an IDE run configuration.
 
 - **Backend API Base:** `http://localhost:8000`
 - **Interactive Swagger Docs:** `http://localhost:8000/docs`
@@ -346,15 +421,19 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ### 2. Frontend Installation & Execution
 
 ```bash
-# Navigate to frontend directory in a separate terminal
+# In a separate terminal
+python scripts/setup_env.py     # creates frontend/.env.local and syncs the API key
+
 cd frontend
-
-# Install Node dependencies
 npm install
-
-# Start Next.js development server
 npm run dev
 ```
+
+If `frontend/.env.local` did not exist when `next dev` started, restart it —
+`NEXT_PUBLIC_*` values are read at build time, not per request.
+
+The studio banner warns about configuration problems it can detect (missing or
+mismatched API key, no Gemini key, no provider key) before the first upload fails.
 
 - **Studio Interface:** `http://localhost:3000/studio`
 - **Landing Page:** `http://localhost:3000`
@@ -382,16 +461,41 @@ cd frontend
 npm run build
 ```
 
-## Vercel deployment
+## Deployment
 
-The Next.js frontend and FastAPI backend can be deployed as separate Vercel projects.
-Follow [`docs/deployment-vercel.md`](docs/deployment-vercel.md) for the exact root
-directories, environment variables, and verification commands.
+### Vercel (frontend + backend)
 
-The frontend is Vercel-ready. The backend has a Vercel adapter for academic demos and
-API experimentation, but reliable public video generation still requires durable media
-storage and a managed worker/container because Vercel serverless files and in-process
-background jobs are not persistent.
+```bash
+vercel login          # once; the CLI stores credentials outside the repository
+bash scripts/deploy_vercel.sh
+```
+
+One command deploys both apps and wires them together:
+
+1. deploys the backend (`backend/` → the `cineestate-api` project) and captures its URL,
+2. pushes the backend configuration from `backend/.env` — keys are transferred, never printed,
+3. sets `PUBLIC_BASE_URL` to the deployed backend URL, which is what finally lets the
+   JSON2Video renderer fetch the source photos (impossible from localhost),
+4. points the frontend at that backend with `NEXT_PUBLIC_API_URL` and the matching
+   `NEXT_PUBLIC_API_KEY`, then deploys it (`frontend/` → `cineestate`),
+5. sets `CORS_ORIGINS` to the frontend origin and redeploys the backend, so the two
+   sites can actually talk to each other,
+6. probes `/api/health` and prints both URLs.
+
+Project names, scopes and the Vercel binary are overridable — see the variables at the
+top of [`scripts/deploy_vercel.sh`](scripts/deploy_vercel.sh). Full constraints and
+manual steps: [`docs/deployment-vercel.md`](docs/deployment-vercel.md).
+
+**What works on Vercel:** the whole studio workflow — project creation, image upload,
+AI scene analysis, planning, clip generation via Magic Hour, inspection and evaluation.
+Storage is redirected to `/tmp` automatically (detected at startup), and `/api/health`
+reports `"is_serverless": true` so you can tell which environment you are talking to.
+
+**What does not:** durable media. Vercel functions get an ephemeral filesystem and a
+bounded execution window, so a project that exists in one request may not exist in the
+next, and a long FFmpeg assembly can exceed the function timeout. Treat a Vercel
+backend as a demo and evaluation surface; persistent deployments need durable storage
+and a long-running worker. The frontend has no such limitation.
 
 ---
 
@@ -401,15 +505,16 @@ For exhaustive technical reference and evaluation preparation, consult the `/doc
 
 | Document | Description |
 | :--- | :--- |
-| [`docs/architecture.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/architecture.md) | Deep architectural specifications, module responsibilities, and data models. |
-| [`docs/api.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/api.md) | Complete REST API endpoint reference with request/response payloads. |
-| [`docs/viva.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/viva.md) | Viva and technical-defense questions with implementation-grounded answers. |
-| [`docs/future-upgrades.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/future-upgrades.md) | Future upgrades, academic boundaries, scope constraints, and explicit non-goals. |
-| [`docs/final-demo.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/final-demo.md) | End-to-end live demonstration and evaluation script. |
-| [`docs/evaluation.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/evaluation.md) | Evaluation metric formulas, automated verification rules, and rubric scoring. |
-| [`docs/results.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/results.md) | Reproducible test commands, result-recording template, and evaluation guidance. |
-| [`docs/screenshots.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/screenshots.md) | 13 ordered screenshot captures for documentation and report inclusion. |
-| [`docs/presentation-outline.md`](file:///Users/piyushsinghal/Documents/Projects/image-video/docs/presentation-outline.md) | 18-slide academic presentation structure with talking points. |
+| [`docs/architecture.md`](docs/architecture.md) | Deep architectural specifications, module responsibilities, and data models. |
+| [`docs/api.md`](docs/api.md) | Complete REST API endpoint reference with request/response payloads. |
+| [`docs/deployment-vercel.md`](docs/deployment-vercel.md) | Vercel deployment: architecture constraints, environment variables, and verification. |
+| [`docs/viva.md`](docs/viva.md) | Viva and technical-defense questions with implementation-grounded answers. |
+| [`docs/future-upgrades.md`](docs/future-upgrades.md) | Future upgrades, academic boundaries, scope constraints, and explicit non-goals. |
+| [`docs/final-demo.md`](docs/final-demo.md) | End-to-end live demonstration and evaluation script. |
+| [`docs/evaluation.md`](docs/evaluation.md) | Evaluation metric formulas, automated verification rules, and rubric scoring. |
+| [`docs/results.md`](docs/results.md) | Reproducible test commands, result-recording template, and evaluation guidance. |
+| [`docs/screenshots.md`](docs/screenshots.md) | 13 ordered screenshot captures for documentation and report inclusion. |
+| [`docs/presentation-outline.md`](docs/presentation-outline.md) | 18-slide academic presentation structure with talking points. |
 
 ---
 

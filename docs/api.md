@@ -15,8 +15,52 @@ All endpoints are served from the FastAPI backend prefix `/api`. Responses adher
 ## 1. System Health & Projects
 
 ### `GET /api/health`
-Checks server and subsystem health.
-- **Response data:** `{"status": "healthy", "service": "walkthrough-backend"}`
+Checks server health **and reports what the process actually loaded**. This is the one
+endpoint exempt from the API-key guard, so the studio can read it before it has any
+credentials — including when the key is wrong, which is exactly when the extra fields
+matter.
+
+- **Response data:**
+
+```json
+{
+  "status": "healthy",
+  "service": "walkthrough-backend",
+  "version": "0.6.0",
+  "video_provider": "magic_hour",
+  "video_provider_setting": "auto",
+  "fallback_to_local": true,
+  "auth_required": true,
+  "env_files": ["backend/.env"],
+  "storage_dir": "/tmp/storage",
+  "is_serverless": false,
+  "configured": {
+    "ai_vision": true,
+    "any_remote_video_provider": true,
+    "magic_hour": true,
+    "json2video": true,
+    "json2video_source_url": false
+  },
+  "setup_hint": "(only present when no environment file was found)"
+}
+```
+
+- `video_provider` is the engine the configuration **resolves to**, not the setting — so a
+  deployment whose key is missing no longer looks identical to a working one.
+- `env_files`, `auth_required` and `configured` are names and booleans only. No secret
+  value is ever returned.
+- `is_serverless: true` means storage is `/tmp` and will not persist between requests.
+
+### Authentication
+
+When `API_ACCESS_KEY` is set in the backend environment, every `/api` route requires it as
+an `X-API-Key` header (or a `?key=` query parameter for clients that cannot set headers).
+Exempt: `/api/health` (readiness probe) and the media routes — `…/file`, `…/download`,
+`…/thumbnail`, `…/analysis-file` — because `<img>`, `<video>` and `<a download>` cannot
+attach headers, and those routes are addressed by unguessable server-generated ids.
+
+The frontend must send the **same** value via `NEXT_PUBLIC_API_KEY`. A mismatch is
+returned as `401 UNAUTHORIZED` with a message that names the fix.
 
 ### `POST /api/projects`
 Creates a new property session.

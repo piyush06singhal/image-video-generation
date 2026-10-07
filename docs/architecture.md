@@ -122,3 +122,44 @@ backend/storage/projects/<project_id>/
     ├── evaluations.json
     └── scene_reviews.json
 ```
+
+---
+
+## 4. Configuration & Environment Resolution
+
+All settings are read once at import time by `app/core/config.py` into a typed
+`Settings` object (`pydantic-settings`), with no per-request re-reads.
+
+### Environment files
+
+`ENV_FILES` is a **tuple of absolute paths** — `<repo-root>/.env` followed by
+`backend/.env`, with the later file winning:
+
+- A relative `env_file` would be resolved against the *process working directory*, so the
+  backend only saw its keys when uvicorn happened to be launched from inside `backend/`.
+  That was the single most common "works on my machine, fails on a fresh clone" cause.
+- Because the paths are absolute and `backend/.env` is listed last, the same keys load
+  regardless of where the process is started from, and a repository-root `.env` can supply
+  shared defaults that the backend file overrides.
+
+### Storage location
+
+`STORAGE_DIR` is resolved the same way — a relative value is anchored to the `backend`
+package, not the working directory — so starting the app from the repository root can no
+longer fork the project store into a second `<repo>/storage` directory.
+
+When the process is running serverless (detected via `VERCEL` in the environment), storage
+is redirected to `/tmp/storage`, because a function filesystem is read-only apart from
+`/tmp` and does not persist between invocations.
+
+### Self-describing diagnostics
+
+`Settings.configuration_report()` exposes what the process loaded — environment file
+names, the resolved storage directory, whether a key is required, and which providers are
+configured — as **names and booleans only**. `/api/health` publishes it, and
+`scripts/check_config.py` consumes it, so a misconfiguration can be diagnosed without any
+secret value leaving the process.
+
+`resolve_video_provider_name()` in the provider factory reports the engine the current
+configuration *resolves to* without constructing it. A deployment whose Magic Hour key is
+missing therefore reports `kenburns` instead of silently pretending to be generative.
