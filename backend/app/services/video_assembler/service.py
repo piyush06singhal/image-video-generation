@@ -107,6 +107,10 @@ class VideoAssemblerService:
             self.storage.save_assembly_json(project_id, job.model_dump(mode="json"))
             return job
         finally:
+            try:
+                self.storage.sync_project(project_id)
+            except Exception as exc:
+                logger.error("Failed to persist completed assembly for %s: %s", project_id, exc)
             self._assembly_tasks.pop(job_id, None)
 
     # ── fingerprints ─────────────────────────────────────────────────────

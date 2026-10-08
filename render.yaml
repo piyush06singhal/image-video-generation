@@ -91,6 +91,16 @@ services:
       - key: PUBLIC_BASE_URL
         sync: false
 
+      # Durable storage for projects and generated media on Render's free plan.
+      - key: REMOTE_STORAGE_ENABLED
+        value: "true"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: walkthrough-assets
+
       # --- Uncomment when a persistent disk is attached ---------------------
       # - key: STORAGE_DIR
       #   value: /var/data/storage

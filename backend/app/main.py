@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import hmac
+import asyncio
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,8 +11,8 @@ from app.core.config import settings
 from app.core.errors import AppException
 from app.core.logging import logger
 from app.schemas.common import ApiResponse
-from app.services.storage_service import storage_service
 from app.services.video_generation import video_generation_service
+from app.services.storage_service import storage_service
 
 
 @asynccontextmanager
@@ -84,6 +85,7 @@ async def api_access_key_guard(request: Request, call_next):
     if request.method == "OPTIONS":
         return await call_next(request)
 
+
     path = request.url.path.rstrip("/")
     if path.rsplit("/", 1)[-1] in MEDIA_PATH_SEGMENTS:
         return await call_next(request)
@@ -101,6 +103,22 @@ async def api_access_key_guard(request: Request, call_next):
         return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=body.model_dump())
 
     return await call_next(request)
+
+
+@app.middleware("http")
+async def persist_project_mutations(request: Request, call_next):
+    """Snapshot successful project mutations to durable storage when enabled."""
+    response = await call_next(request)
+    if response.status_code < 400 and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        parts = request.url.path.strip("/").split("/")
+        if len(parts) >= 3 and parts[0] == "api" and parts[1] == "projects":
+            project_id = parts[2]
+            try:
+                await asyncio.to_thread(storage_service.sync_project, project_id)
+            except Exception as exc:
+                logger.error("Durable persistence failed for %s: %s", project_id, exc)
+                raise
+    return response
 
 
 # Configure CORS for frontend access. Registered last so it is the outermost

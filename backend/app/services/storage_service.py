@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.core.config import settings
 from app.core.errors import StorageError
 from app.core.logging import logger
+from app.services.remote_storage_service import remote_storage_service
 
 
 class StorageService:
@@ -29,6 +30,14 @@ class StorageService:
         except Exception as e:
             logger.error(f"Failed to initialize storage directories: {e}")
             raise StorageError(f"Unable to initialize storage at {self.storage_dir}")
+
+    def sync_project(self, project_id: str) -> None:
+        """Persist the local project snapshot to configured durable storage."""
+        remote_storage_service.sync_project(project_id, self.get_project_dir(project_id))
+
+    def restore_project(self, project_id: str) -> bool:
+        """Restore a missing local project from configured durable storage."""
+        return remote_storage_service.restore_project(project_id, self.get_project_dir(project_id))
 
     def get_project_dir(self, project_id: str) -> Path:
         return self.projects_dir / project_id
@@ -312,6 +321,9 @@ class StorageService:
         """
         json_path = self.get_project_json_path(project_id)
         if not json_path.is_file():
+            if self.restore_project(project_id):
+                json_path = self.get_project_json_path(project_id)
+        if not json_path.is_file():
             return None
 
         try:
@@ -454,11 +466,13 @@ class StorageService:
         if project_dir.exists() and project_dir.is_dir():
             try:
                 shutil.rmtree(project_dir)
+                remote_storage_service.delete_project(project_id)
                 logger.info(f"Cleaned up all storage files for project {project_id}")
                 return True
             except Exception as e:
                 logger.error(f"Failed to delete project directory {project_dir}: {e}")
                 raise StorageError(f"Failed to delete project storage for {project_id}")
+        remote_storage_service.delete_project(project_id)
         return False
 
     def list_all_projects(self) -> List[Dict[str, Any]]:
@@ -474,6 +488,13 @@ class StorageService:
                 data = self.load_project_json(item.name)
                 if data:
                     projects.append(data)
+
+        for project_id in remote_storage_service.list_project_ids():
+            if not self.get_project_json_path(project_id).is_file():
+                self.restore_project(project_id)
+            data = self.load_project_json(project_id)
+            if data and not any(p.get("id") == data.get("id") for p in projects):
+                projects.append(data)
         
         # Sort by created_at desc
         projects.sort(key=lambda x: x.get("created_at", ""), reverse=True)

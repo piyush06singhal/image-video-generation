@@ -56,6 +56,7 @@ async def create_project(project_in: ProjectCreate):
     Create a new real estate project session.
     """
     project = project_service.create_project(project_in)
+    await asyncio.to_thread(project_service.storage.sync_project, project.id)
     return ApiResponse.success_response(project)
 
 

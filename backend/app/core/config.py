@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     # Storage configuration
     BASE_DIR: Path = BACKEND_DIR
     STORAGE_DIR: Path = Field(default=None)
+    REMOTE_STORAGE_ENABLED: bool = False
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
+    SUPABASE_STORAGE_BUCKET: str = "walkthrough-assets"
 
     # True when running as an ephemeral function (Vercel), where the only writable
     # path is /tmp and nothing survives between requests. Surfaced by /api/health
@@ -260,6 +264,12 @@ class Settings(BaseSettings):
             "storage_dir": str(self.STORAGE_DIR),
             "is_serverless": self.IS_SERVERLESS,
             "auth_required": bool(self.API_ACCESS_KEY),
+            "durable_storage": bool(
+                self.REMOTE_STORAGE_ENABLED
+                and self.SUPABASE_URL
+                and self.SUPABASE_SERVICE_ROLE_KEY
+            ),
+            "durable_storage_requested": self.REMOTE_STORAGE_ENABLED,
             "configured": {
                 "ai_vision": bool(self.GEMINI_API_KEY or self.GOOGLE_API_KEY),
                 "any_remote_video_provider": bool(self.MAGIC_HOUR_API_KEY)
