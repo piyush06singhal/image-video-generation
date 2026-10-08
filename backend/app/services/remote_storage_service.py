@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import io
 import shutil
 import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
@@ -47,13 +45,24 @@ class RemoteStorageService:
         return f"{base}/storage/v1/object/{bucket}/projects/{project_id}.zip"
 
     @staticmethod
-    def _archive(project_dir: Path) -> bytes:
-        buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+    def _archive(project_dir: Path) -> Path:
+        fd, archive_name = tempfile.mkstemp(suffix=".zip", dir=str(project_dir.parent))
+        Path(archive_name).unlink(missing_ok=True)
+        archive_path = Path(archive_name)
+        with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             for path in project_dir.rglob("*"):
-                if path.is_file() and not path.name.startswith("."):
-                    archive.write(path, path.relative_to(project_dir))
-        return buffer.getvalue()
+                relative_path = path.relative_to(project_dir)
+                if (
+                    path.is_file()
+                    and not path.name.startswith(".")
+                    and not (
+                        len(relative_path.parts) >= 2
+                        and relative_path.parts[0] == "final"
+                        and relative_path.parts[1].startswith("temp_")
+                    )
+                ):
+                    archive.write(path, relative_path)
+        return archive_path
 
     def sync_project(self, project_id: str, project_dir: Path) -> None:
         if not self.enabled:
@@ -61,25 +70,27 @@ class RemoteStorageService:
         if not project_dir.is_dir():
             raise StorageError(f"Cannot persist missing project directory: {project_id}")
 
-        payload = self._archive(project_dir)
+        archive_path = self._archive(project_dir)
         try:
-            response = httpx.post(
-                self._object_url(project_id),
-                content=payload,
-                headers={
-                    **self._headers(),
-                    "Content-Type": "application/zip",
-                    "x-upsert": "true",
-                },
-                timeout=60.0,
-            )
-            response.raise_for_status()
+            with archive_path.open("rb") as archive_file:
+                response = httpx.post(
+                    self._object_url(project_id),
+                    content=archive_file,
+                    headers={
+                        **self._headers(),
+                        "Content-Type": "application/zip",
+                        "x-upsert": "true",
+                    },
+                    timeout=120.0,
+                )
+                response.raise_for_status()
+            archive_bytes = archive_path.stat().st_size
             index_response = httpx.post(
                 f"{(settings.SUPABASE_URL or '').rstrip('/')}/rest/v1/project_snapshots",
                 json={
                     "project_id": project_id,
                     "archive_path": f"projects/{project_id}.zip",
-                    "archive_bytes": len(payload),
+                    "archive_bytes": archive_bytes,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 },
                 headers={
@@ -93,10 +104,12 @@ class RemoteStorageService:
         except (httpx.HTTPError, StorageError) as exc:
             logger.error("Failed to persist project %s to Supabase: %s", project_id, exc)
             raise StorageError(f"Failed to persist project {project_id} to remote storage") from exc
+        finally:
+            archive_path.unlink(missing_ok=True)
         logger.info(
             "Persisted project %s to durable storage (%d bytes, %s)",
             project_id,
-            len(payload),
+            archive_bytes,
             datetime.now(timezone.utc).isoformat(),
         )
 
@@ -104,14 +117,20 @@ class RemoteStorageService:
         if not self.enabled:
             return False
         try:
-            response = httpx.get(
+            response = httpx.stream(
                 self._object_url(project_id),
                 headers=self._headers(),
                 timeout=60.0,
             )
-            if response.status_code == 404:
-                return False
-            response.raise_for_status()
+            with response as stream:
+                if stream.status_code == 404:
+                    return False
+                stream.raise_for_status()
+                fd, archive_name = tempfile.mkstemp(suffix=".zip", dir=str(project_dir.parent))
+                archive_path = Path(archive_name)
+                with archive_path.open("wb") as archive_file:
+                    for chunk in stream.iter_bytes():
+                        archive_file.write(chunk)
         except (httpx.HTTPError, StorageError) as exc:
             logger.error("Failed to restore project %s from Supabase: %s", project_id, exc)
             raise StorageError(f"Failed to restore project {project_id} from remote storage") from exc
@@ -120,7 +139,7 @@ class RemoteStorageService:
             extracted = Path(temp_dir) / project_id
             extracted.mkdir()
             try:
-                with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+                with zipfile.ZipFile(archive_path) as archive:
                     for member in archive.infolist():
                         target = (extracted / member.filename).resolve()
                         if extracted.resolve() not in target.parents:
@@ -132,6 +151,7 @@ class RemoteStorageService:
             if project_dir.exists():
                 shutil.rmtree(project_dir)
             shutil.move(str(extracted), str(project_dir))
+        archive_path.unlink(missing_ok=True)
         logger.info("Restored project %s from durable storage", project_id)
         return True
 

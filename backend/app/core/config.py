@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     SUPABASE_URL: Optional[str] = None
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
     SUPABASE_STORAGE_BUCKET: str = "walkthrough-assets"
+    ASSEMBLY_MAX_RESOLUTION: Optional[str] = None
 
     # True when running as an ephemeral function (Vercel), where the only writable
     # path is /tmp and nothing survives between requests. Surfaced by /api/health

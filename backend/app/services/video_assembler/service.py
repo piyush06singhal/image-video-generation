@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.core.errors import AppException, ProjectNotFoundError
+from app.core.config import settings
 from app.core.logging import logger
 from app.schemas.assembly import (
     AssembledSceneInfo,
@@ -282,6 +283,19 @@ class VideoAssemblerService:
     ) -> AssemblyJob:
         req = request or AssemblyRequest()
         options = self._resolve_options(project_id, request)
+        max_resolution = settings.ASSEMBLY_MAX_RESOLUTION
+        resolution_order = {"720p": 0, "1080p": 1, "1440p": 2}
+        if (
+            max_resolution in resolution_order
+            and resolution_order.get(options.resolution, 1) > resolution_order[max_resolution]
+        ):
+            logger.warning(
+                "Capping assembly resolution for %s from %s to %s",
+                project_id,
+                options.resolution,
+                max_resolution,
+            )
+            options = options.model_copy(update={"resolution": max_resolution})
 
         proj_data = self.storage.load_project_json(project_id)
         if not proj_data:

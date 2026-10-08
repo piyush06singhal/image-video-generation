@@ -65,6 +65,10 @@ services:
         value: "5"
       - key: MAX_CONCURRENT_GENERATIONS
         value: "1"
+      # Keep FFmpeg within the free instance's 512 MB memory limit. Users can
+      # still select higher quality; the backend safely caps the actual assembly.
+      - key: ASSEMBLY_MAX_RESOLUTION
+        value: "720p"
 
       # Vercel gives every preview deployment a NEW hostname, so a static
       # allow-list would break on each branch build. This regex keeps previews

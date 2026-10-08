@@ -197,7 +197,10 @@ class FFmpegEngine:
     # A finished walkthrough is encoded up to four times (clip render, label burn,
     # transition assembly, grade pass), so the intermediate quality has to be high
     # enough that the last encode is not visibly lossy.
-    _ENCODE_ARGS = ["-c:v", "libx264", "-preset", "fast", "-crf", "17", "-pix_fmt", "yuv420p", "-movflags", "+faststart"]
+    _ENCODE_ARGS = [
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "19",
+        "-pix_fmt", "yuv420p", "-threads", "1", "-movflags", "+faststart",
+    ]
 
     def probe_video(self, video_path: Path) -> Dict[str, Any]:
         """

@@ -20,12 +20,21 @@ REMOTE_STORAGE_ENABLED=true
 SUPABASE_URL=https://<project>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<server-only-service-role-key>
 SUPABASE_STORAGE_BUCKET=walkthrough-assets
+ASSEMBLY_MAX_RESOLUTION=720p
 ```
 
 The application uploads one private ZIP snapshot per project after each
-mutation. On a restart, a project is restored lazily when its first request
-loads the missing local `project.json`. Assembly continues to use local files,
-then the completed MP4 and metadata are uploaded in the final snapshot.
+mutation. Archives are written to temporary disk storage and uploaded as a
+stream, so the full project is not duplicated in RAM. Temporary assembly
+directories are excluded. On a restart, a project is restored lazily when its
+first request loads the missing local `project.json`. Assembly continues to use
+local files, then the completed MP4 and metadata are uploaded in the final
+snapshot.
+
+`ASSEMBLY_MAX_RESOLUTION=720p` is intentional for Render Free's 512 MB memory
+limit. The UI may retain a higher selected quality, but the backend caps the
+actual FFmpeg output safely on this plan. Remove or increase the variable only
+on a service with enough memory.
 
 ## Operational notes
 
