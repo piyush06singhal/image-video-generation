@@ -72,6 +72,7 @@ class RemoteStorageService:
 
         archive_path = self._archive(project_dir)
         try:
+            archive_bytes = archive_path.stat().st_size
             with archive_path.open("rb") as archive_file:
                 response = httpx.post(
                     self._object_url(project_id),
@@ -79,12 +80,12 @@ class RemoteStorageService:
                     headers={
                         **self._headers(),
                         "Content-Type": "application/zip",
+                        "Content-Length": str(archive_bytes),
                         "x-upsert": "true",
                     },
                     timeout=120.0,
                 )
                 response.raise_for_status()
-            archive_bytes = archive_path.stat().st_size
             index_response = httpx.post(
                 f"{(settings.SUPABASE_URL or '').rstrip('/')}/rest/v1/project_snapshots",
                 json={
