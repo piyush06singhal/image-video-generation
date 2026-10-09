@@ -111,13 +111,20 @@ async def persist_project_mutations(request: Request, call_next):
     response = await call_next(request)
     if response.status_code < 400 and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
         parts = request.url.path.strip("/").split("/")
-        if len(parts) >= 3 and parts[0] == "api" and parts[1] == "projects":
+        is_project_creation = (
+            request.method == "POST" and len(parts) == 3
+            and parts[0] == "api" and parts[1] == "projects"
+        )
+        if len(parts) >= 3 and parts[0] == "api" and parts[1] == "projects" and not is_project_creation:
             project_id = parts[2]
             try:
                 await asyncio.to_thread(storage_service.sync_project, project_id)
             except Exception as exc:
                 logger.error("Durable persistence failed for %s: %s", project_id, exc)
-                raise
+                # Remote durability is best-effort for the mutation request. The
+                # local project write has already succeeded; turning a Supabase
+                # outage into HTTP 500 makes the browser report a misleading CORS
+                # failure and prevents the user from continuing the workflow.
     return response
 
 
